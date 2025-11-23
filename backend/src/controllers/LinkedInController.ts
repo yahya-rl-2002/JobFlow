@@ -12,7 +12,7 @@ export class LinkedInController {
     try {
       const state = req.query.state as string;
       const authUrl = LinkedInService.getAuthorizationUrl(state);
-      
+
       res.json({
         authorization_url: authUrl,
         state: state,
@@ -37,25 +37,25 @@ export class LinkedInController {
           error_description,
           query: req.query,
         });
-        
-        const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/auth/linkedin/callback?error=${encodeURIComponent(error as string)}${error_description ? `&error_description=${encodeURIComponent(error_description as string)}` : ''}`;
+
+        const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/linkedin/callback?error=${encodeURIComponent(error as string)}${error_description ? `&error_description=${encodeURIComponent(error_description as string)}` : ''}`;
         return res.redirect(errorUrl);
       }
 
       if (!code) {
         logger.error('LinkedIn callback missing authorization code', { query: req.query });
-        const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/auth/linkedin/callback?error=missing_code`;
+        const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/linkedin/callback?error=missing_code`;
         return res.redirect(errorUrl);
       }
 
       // Le code sera traité par le frontend via la page callback
       // On redirige simplement vers la page callback avec le code
-      const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/auth/linkedin/callback?code=${code}${state ? `&state=${state}` : ''}`;
-      
+      const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/linkedin/callback?code=${code}${state ? `&state=${state}` : ''}`;
+
       res.redirect(redirectUrl);
     } catch (error: any) {
       logger.error('LinkedIn callback error', error);
-      const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/auth/linkedin/callback?error=${encodeURIComponent(error.message)}`;
+      const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/linkedin/callback?error=${encodeURIComponent(error.message)}`;
       res.redirect(errorUrl);
     }
   }

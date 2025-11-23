@@ -99,5 +99,12 @@ export class ApplicationModel {
     );
     return result.rows;
   }
+  static async findByUserAndJob(userId: number, jobOfferId: number): Promise<Application | null> {
+    const result = await config.query(
+      'SELECT * FROM applications WHERE user_id = $1 AND job_offer_id = $2',
+      [userId, jobOfferId]
+    );
+    return result.rows[0] || null;
+  }
 }
 

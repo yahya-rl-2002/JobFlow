@@ -75,6 +75,8 @@ export const applicationService = {
   update: (id: number, data: any) => api.put(`/applications/${id}`, data).then((res) => res.data),
 
   submit: (id: number) => api.post(`/applications/${id}/submit`).then((res) => res.data),
+
+  bulkApply: (jobIds: number[]) => api.post('/applications/bulk', { job_ids: jobIds }).then((res) => res.data),
 }
 
 export const matchingService = {

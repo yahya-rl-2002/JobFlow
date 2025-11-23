@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { jobService } from '../services/api'
+import { jobService, applicationService } from '../services/api'
 import { toast } from 'react-toastify'
-import AutocompleteInput from '../components/AutocompleteInput'
-import { FaSearch, FaMapMarkerAlt, FaBriefcase, FaLaptopHouse, FaSync, FaMoneyBillWave } from 'react-icons/fa'
+import MultiSelectDropdown from '../components/MultiSelectDropdown'
+import { FaSearch, FaMapMarkerAlt, FaBriefcase, FaLaptopHouse, FaSync, FaMoneyBillWave, FaCheckSquare, FaSquare, FaPaperPlane } from 'react-icons/fa'
 
 interface JobOffer {
   id: number
@@ -22,10 +22,12 @@ interface JobOffer {
   posted_date?: string
   created_at?: string
 }
-
 const KEYWORD_SUGGESTIONS = [
   'developer', 'développeur', 'engineer', 'ingénieur', 'designer', 'manager',
-  'data scientist', 'product manager', 'marketing', 'sales', 'consultant'
+  'data scientist', 'product manager', 'marketing', 'sales', 'consultant',
+  'financial analyst', 'analyste financier', 'accountant', 'comptable',
+  'auditor', 'auditeur', 'trader', 'economist', 'économiste', 'investment banking',
+  'risk manager', 'controller', 'contrôleur de gestion', 'finance manager'
 ]
 
 const LOCATION_SUGGESTIONS = [
@@ -37,12 +39,14 @@ export default function JobSearch() {
   const [allJobs, setAllJobs] = useState<JobOffer[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [selectedJobs, setSelectedJobs] = useState<number[]>([])
   const jobsPerPage = 12
 
   const [filters, setFilters] = useState({
-    keywords: '',
-    location: '',
+    keywords: [] as string[],
+    location: [] as string[],
     platform: '' as '' | 'linkedin' | 'indeed',
     remote: false,
     datePosted: ''
@@ -57,14 +61,15 @@ export default function JobSearch() {
       setLoading(true)
       const params: any = { limit: 500 }
 
-      if (filters.keywords?.trim()) params.keywords = filters.keywords.trim()
-      if (filters.location?.trim()) params.location = filters.location.trim()
+      if (filters.keywords.length > 0) params.keywords = filters.keywords.join(',')
+      if (filters.location.length > 0) params.location = filters.location.join(',')
       if (filters.platform) params.platform = filters.platform
       if (filters.remote) params.remote = 'true'
 
       const response = await jobService.search(params)
       setAllJobs(response.jobs || [])
       setCurrentPage(1)
+      setSelectedJobs([]) // Reset selection on new search
     } catch (error: any) {
       toast.error('Erreur chargement offres: ' + (error.response?.data?.error || error.message))
     } finally {
@@ -72,29 +77,77 @@ export default function JobSearch() {
     }
   }
 
-  const handleSync = async () => {
+  const handleSearchAndSync = async () => {
     try {
       setSyncing(true)
-      const response = await jobService.sync({
+      setLoading(true)
+
+      // 1. Sync jobs based on filters
+      const syncResponse = await jobService.sync({
         platform: filters.platform || '',
-        keywords: filters.keywords || 'developer',
-        location: filters.location || 'Paris, France',
-        limit: 500,
-        period: filters.datePosted || 'month' // Pass date filter as period
+        keywords: filters.keywords.length > 0 ? filters.keywords[0] : 'developer', // Use first keyword for sync
+        location: filters.location.length > 0 ? filters.location[0] : 'Paris, France', // Use first location for sync
+        limit: 20, // Reasonable limit per sync
+        period: filters.datePosted || 'month'
       })
 
-      toast.success(`${response.count || 0} offres synchronisées!`)
+      if (syncResponse.count > 0) {
+        toast.success(`${syncResponse.count} nouvelles offres trouvées !`)
+      } else {
+        toast.info('Aucune nouvelle offre trouvée, affichage des résultats existants.')
+      }
 
-      setTimeout(async () => {
-        const savedFilters = { ...filters }
-        setFilters({ keywords: '', location: '', platform: '', remote: false, datePosted: '' })
-        await loadJobs()
-        setTimeout(() => setFilters(savedFilters), 500)
-      }, 1500)
+      // 2. Load updated jobs from DB
+      await loadJobs()
+
     } catch (error: any) {
-      toast.error('Erreur synchro: ' + (error.response?.data?.error || error.message))
+      console.error('Search/Sync error:', error)
+      toast.error('Erreur lors de la recherche: ' + (error.response?.data?.error || error.message))
+      // Try to load existing jobs anyway
+      await loadJobs()
     } finally {
       setSyncing(false)
+      setLoading(false)
+    }
+  }
+
+  const toggleJobSelection = (jobId: number) => {
+    setSelectedJobs(prev =>
+      prev.includes(jobId)
+        ? prev.filter(id => id !== jobId)
+        : [...prev, jobId]
+    )
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedJobs.length === currentJobs.length) {
+      setSelectedJobs([])
+    } else {
+      setSelectedJobs(currentJobs.map(job => job.id))
+    }
+  }
+
+  const handleBulkApply = async () => {
+    if (selectedJobs.length === 0) return
+
+    if (!window.confirm(`Voulez-vous vraiment postuler à ces ${selectedJobs.length} offres ?`)) {
+      return
+    }
+
+    try {
+      setApplying(true)
+      const response = await applicationService.bulkApply(selectedJobs)
+
+      toast.success(response.message || `Candidature envoyée pour ${response.success_count} offres !`)
+      setSelectedJobs([])
+
+      // Optional: Refresh jobs or mark them as applied visually
+      // await loadJobs() 
+    } catch (error: any) {
+      console.error('Bulk apply error:', error)
+      toast.error('Erreur lors de la candidature groupée: ' + (error.response?.data?.error || error.message))
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -111,7 +164,7 @@ export default function JobSearch() {
   }
 
   return (
-    <div className="fade-in">
+    <div className="fade-in" style={{ paddingBottom: '80px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
@@ -137,49 +190,33 @@ export default function JobSearch() {
         {/* Main Search Bar */}
         <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
           <div style={{ flex: 1, position: 'relative' }}>
-            <FaSearch style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '1.2rem' }} />
             <div style={{ marginLeft: '40px' }}>
-              <AutocompleteInput
-                value={filters.keywords}
-                onChange={(value) => setFilters(prev => ({ ...prev, keywords: value }))}
-                placeholder="Intitulé du poste, mots-clés ou entreprise"
-                suggestions={KEYWORD_SUGGESTIONS}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  fontSize: '1.1rem',
-                  border: 'none',
-                  outline: 'none',
-                  backgroundColor: 'transparent'
-                }}
+              <MultiSelectDropdown
+                options={KEYWORD_SUGGESTIONS}
+                selected={Array.isArray(filters.keywords) ? filters.keywords : []}
+                onChange={(selected: string[]) => setFilters(prev => ({ ...prev, keywords: selected }))}
+                placeholder="Intitulé du poste (ex: Dev, Manager)"
+                icon={<FaSearch />}
               />
             </div>
             <div style={{ position: 'absolute', right: '0', top: '10%', height: '80%', width: '1px', backgroundColor: '#e5e7eb' }} />
           </div>
 
           <div style={{ flex: 1, position: 'relative' }}>
-            <FaMapMarkerAlt style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '1.2rem' }} />
             <div style={{ marginLeft: '40px' }}>
-              <AutocompleteInput
-                value={filters.location}
-                onChange={(value) => setFilters(prev => ({ ...prev, location: value }))}
-                placeholder="Ville, région ou code postal"
-                suggestions={LOCATION_SUGGESTIONS}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  fontSize: '1.1rem',
-                  border: 'none',
-                  outline: 'none',
-                  backgroundColor: 'transparent'
-                }}
+              <MultiSelectDropdown
+                options={LOCATION_SUGGESTIONS}
+                selected={Array.isArray(filters.location) ? filters.location : []}
+                onChange={(selected: string[]) => setFilters(prev => ({ ...prev, location: selected }))}
+                placeholder="Ville (ex: Paris, Lyon)"
+                icon={<FaMapMarkerAlt />}
               />
             </div>
           </div>
 
           <button
-            onClick={() => { setCurrentPage(1); loadJobs(); }}
-            disabled={loading}
+            onClick={handleSearchAndSync}
+            disabled={loading || syncing || (filters.keywords.length === 0 && filters.location.length === 0)}
             style={{
               padding: '0 32px',
               backgroundColor: 'var(--primary-color)',
@@ -188,13 +225,21 @@ export default function JobSearch() {
               borderRadius: '30px',
               fontWeight: '700',
               fontSize: '1.1rem',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.7 : 1,
+              cursor: (loading || syncing || (filters.keywords.length === 0 && filters.location.length === 0)) ? 'not-allowed' : 'pointer',
+              opacity: (loading || syncing || (filters.keywords.length === 0 && filters.location.length === 0)) ? 0.7 : 1,
               transition: 'all 0.2s',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
             }}
           >
-            {loading ? 'Recherche...' : 'Rechercher'}
+            {(loading || syncing) ? (
+              <>
+                <FaSync className="spin" />
+                Actualisation...
+              </>
+            ) : 'Rechercher'}
           </button>
         </div>
 
@@ -314,28 +359,31 @@ export default function JobSearch() {
 
           <div style={{ flex: 1 }} />
 
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
-              backgroundColor: 'transparent',
-              color: syncing ? '#9ca3af' : 'var(--primary-color)',
-              border: 'none',
-              fontWeight: '600',
-              cursor: syncing ? 'not-allowed' : 'pointer',
-              fontSize: '0.9rem',
-              transition: 'opacity 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
-            onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-          >
-            <FaSync className={syncing ? 'spin' : ''} />
-            {syncing ? 'Synchronisation...' : 'Synchroniser les offres'}
-          </button>
+          {/* Select All Toggle */}
+          {allJobs.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                backgroundColor: 'transparent',
+                color: 'var(--text-secondary)',
+                border: 'none',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+              }}
+            >
+              {selectedJobs.length === currentJobs.length ? (
+                <FaCheckSquare color="var(--primary-color)" size={18} />
+              ) : (
+                <FaSquare color="#d1d5db" size={18} />
+              )}
+              Tout sélectionner
+            </button>
+          )}
         </div>
       </div>
 
@@ -355,29 +403,40 @@ export default function JobSearch() {
               <div
                 key={job.id}
                 style={{
-                  backgroundColor: 'white',
+                  backgroundColor: selectedJobs.includes(job.id) ? '#eff6ff' : 'white',
                   borderRadius: '16px',
                   padding: '24px',
-                  border: '1px solid #e5e7eb',
+                  border: selectedJobs.includes(job.id) ? '2px solid var(--primary-color)' : '1px solid #e5e7eb',
                   transition: 'all 0.2s',
                   display: 'flex',
                   flexDirection: 'column',
                   height: '100%',
                   position: 'relative',
                   overflow: 'hidden',
+                  cursor: 'pointer'
                 }}
+                onClick={() => toggleJobSelection(job.id)}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'translateY(-4px)';
                   e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.1)';
-                  e.currentTarget.style.borderColor = 'var(--primary-color)';
+                  if (!selectedJobs.includes(job.id)) e.currentTarget.style.borderColor = '#93c5fd';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = 'none';
-                  e.currentTarget.style.borderColor = '#e5e7eb';
+                  if (!selectedJobs.includes(job.id)) e.currentTarget.style.borderColor = '#e5e7eb';
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '16px' }}>
+                {/* Checkbox Overlay */}
+                <div style={{ position: 'absolute', top: '24px', right: '24px' }}>
+                  {selectedJobs.includes(job.id) ? (
+                    <FaCheckSquare color="var(--primary-color)" size={24} />
+                  ) : (
+                    <FaSquare color="#e5e7eb" size={24} />
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '16px', paddingRight: '40px' }}>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{
                       padding: '4px 10px',
@@ -439,6 +498,7 @@ export default function JobSearch() {
                       href={job.url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       style={{
                         flex: 1,
                         padding: '10px',
@@ -458,6 +518,10 @@ export default function JobSearch() {
                     </a>
                   )}
                   <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      // Individual apply logic here if needed
+                    }}
                     style={{
                       flex: 2,
                       padding: '10px',
@@ -517,6 +581,74 @@ export default function JobSearch() {
             </div>
           )}
         </>
+      )}
+
+      {/* Floating Action Button for Mass Apply */}
+      {selectedJobs.length > 0 && (
+        <div className="fade-in" style={{
+          position: 'fixed',
+          bottom: '32px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'white',
+          padding: '16px 32px',
+          borderRadius: '50px',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '24px',
+          zIndex: 100,
+          border: '1px solid #e5e7eb'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              backgroundColor: 'var(--primary-color)',
+              color: 'white',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: '700'
+            }}>
+              {selectedJobs.length}
+            </div>
+            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>offres sélectionnées</span>
+          </div>
+
+          <button
+            onClick={handleBulkApply}
+            disabled={applying}
+            style={{
+              backgroundColor: 'var(--primary-color)',
+              color: 'white',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: '24px',
+              fontWeight: '700',
+              fontSize: '1rem',
+              cursor: applying ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'transform 0.2s',
+              boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.3)'
+            }}
+            onMouseOver={(e) => !applying && (e.currentTarget.style.transform = 'scale(1.05)')}
+            onMouseOut={(e) => !applying && (e.currentTarget.style.transform = 'scale(1)')}
+          >
+            {applying ? (
+              <>
+                <FaSync className="spin" /> Envoi...
+              </>
+            ) : (
+              <>
+                <FaPaperPlane /> Postuler à tout
+              </>
+            )}
+          </button>
+        </div>
       )}
     </div>
   )

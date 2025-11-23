@@ -22,6 +22,7 @@ export interface JobOffer {
   created_at?: Date;
   updated_at?: Date;
   is_active?: boolean;
+  user_id?: number;
 }
 
 export class JobOfferModel {
@@ -30,8 +31,8 @@ export class JobOfferModel {
       `INSERT INTO job_offers (
         external_id, platform, title, company, location, description, requirements,
         skills_required, salary_min, salary_max, salary_currency, job_type, remote, url,
-        posted_date, expiry_date, raw_data
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        posted_date, expiry_date, raw_data, user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       ON CONFLICT (external_id) DO UPDATE SET
         title = EXCLUDED.title,
         company = EXCLUDED.company,
@@ -61,6 +62,7 @@ export class JobOfferModel {
         jobData.posted_date || null,
         jobData.expiry_date || null,
         jobData.raw_data ? JSON.stringify(jobData.raw_data) : null,
+        jobData.user_id || null,
       ]
     );
 
@@ -112,7 +114,7 @@ export class JobOfferModel {
     fields.push(`updated_at = $${paramCount}`);
     values.push(new Date());
     paramCount++;
-    
+
     // Ajouter l'id pour la clause WHERE
     values.push(id);
 
@@ -130,16 +132,24 @@ export class JobOfferModel {
 
   static async search(filters: {
     platform?: string;
-    location?: string;
+    location?: string | string[];
     job_type?: string;
     remote?: boolean;
-    keywords?: string;
+    keywords?: string | string[];
     limit?: number;
     offset?: number;
+    user_id?: number;
   }): Promise<JobOffer[]> {
     let query = 'SELECT * FROM job_offers WHERE is_active = true';
     const params: any[] = [];
     let paramCount = 1;
+
+    // Filter by user_id if provided
+    if (filters.user_id) {
+      query += ` AND user_id = $${paramCount}`;
+      params.push(filters.user_id);
+      paramCount++;
+    }
 
     if (filters.platform) {
       query += ` AND platform = $${paramCount}`;
@@ -147,10 +157,20 @@ export class JobOfferModel {
       paramCount++;
     }
 
-    if (filters.location && filters.location.trim()) {
-      query += ` AND location ILIKE $${paramCount}`;
-      params.push(`%${filters.location.trim()}%`);
-      paramCount++;
+    // Handle multiple locations (OR logic)
+    if (filters.location) {
+      const locations = Array.isArray(filters.location)
+        ? filters.location
+        : filters.location.split(',').map(l => l.trim()).filter(l => l.length > 0);
+
+      if (locations.length > 0) {
+        const locationConditions = locations.map((_, idx) => `location ILIKE $${paramCount + idx}`).join(' OR ');
+        query += ` AND (${locationConditions})`;
+        locations.forEach(loc => {
+          params.push(`%${loc}%`);
+        });
+        paramCount += locations.length;
+      }
     }
 
     if (filters.job_type) {
@@ -165,14 +185,18 @@ export class JobOfferModel {
       paramCount++;
     }
 
-    if (filters.keywords && filters.keywords.trim()) {
-      // Recherche plus flexible : chaque mot-clé est recherché séparément
-      const keywords = filters.keywords.trim().split(/\s+/).filter(k => k.length > 0);
+    // Handle multiple keywords (OR logic)
+    if (filters.keywords) {
+      const keywords = Array.isArray(filters.keywords)
+        ? filters.keywords
+        : filters.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0);
+
       if (keywords.length > 0) {
         const keywordConditions = keywords.map((_, idx) => {
           const paramIdx = paramCount + idx;
           return `(title ILIKE $${paramIdx} OR description ILIKE $${paramIdx} OR requirements ILIKE $${paramIdx} OR company ILIKE $${paramIdx})`;
-        }).join(' AND ');
+        }).join(' OR '); // Changed to OR for multi-criteria
+
         query += ` AND (${keywordConditions})`;
         keywords.forEach(keyword => {
           params.push(`%${keyword}%`);
@@ -208,8 +232,8 @@ export class JobOfferModel {
           `INSERT INTO job_offers (
             external_id, platform, title, company, location, description, requirements,
             skills_required, salary_min, salary_max, salary_currency, job_type, remote, url,
-            posted_date, expiry_date, raw_data
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            posted_date, expiry_date, raw_data, user_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
           ON CONFLICT (external_id) DO UPDATE SET
             title = EXCLUDED.title,
             company = EXCLUDED.company,
@@ -238,6 +262,7 @@ export class JobOfferModel {
             job.posted_date || null,
             job.expiry_date || null,
             job.raw_data ? JSON.stringify(job.raw_data) : null,
+            job.user_id || null,
           ]
         );
       }

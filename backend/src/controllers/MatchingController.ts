@@ -37,16 +37,21 @@ export class MatchingController {
         jobs = await Promise.all(
           job_ids.map((id: number) => JobOfferModel.findById(id))
         );
-        jobs = jobs.filter((j) => j !== null);
+        // Filter out nulls AND jobs not belonging to user (if strict isolation desired)
+        // Note: System jobs (user_id IS NULL) might be allowed? User asked for "vide", so assume strict.
+        jobs = jobs.filter((j) => j !== null && (j.user_id === req.userId));
       } else {
-        jobs = await JobOfferModel.search({ limit });
+        jobs = await JobOfferModel.search({
+          limit,
+          user_id: req.userId! // Only match against user's jobs
+        });
       }
 
       // Call NLP service for matching
       const nlpServiceUrl = process.env.NLP_SERVICE_URL || 'http://localhost:5001';
       const response = await axios.post(`${nlpServiceUrl}/match`, {
         cv_data: cv.parsed_data || {},
-        jobs: jobs.map((job) => ({
+        jobs: (jobs as any[]).map((job) => ({
           id: job.id,
           title: job.title,
           description: job.description,

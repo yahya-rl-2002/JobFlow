@@ -14,20 +14,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      // Vérifier si le token est valide
-      authService.verifyToken()
-        .then(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem('token')
+      if (token) {
+        try {
+          // Vérifier si le token est valide
+          await authService.verifyToken()
           setIsAuthenticated(true)
-          // Charger les infos utilisateur
-        })
-        .catch(() => {
+          // Ici on pourrait aussi charger les infos utilisateur complètes si nécessaire
+        } catch (error) {
+          console.error('Token invalid:', error)
           localStorage.removeItem('token')
-        })
+          setIsAuthenticated(false)
+        }
+      }
+      setLoading(false)
     }
+
+    initAuth()
   }, [])
 
   const login = async (email: string, password: string) => {
@@ -48,6 +55,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('token')
     setUser(null)
     setIsAuthenticated(false)
+  }
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Chargement...</div>
   }
 
   return (

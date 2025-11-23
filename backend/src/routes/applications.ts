@@ -10,6 +10,7 @@ router.get('/', ApplicationController.getAll);
 router.get('/:id', ApplicationController.getById);
 router.post('/', ApplicationController.create);
 router.put('/:id', ApplicationController.update);
+router.post('/bulk', ApplicationController.bulkApply);
 router.post('/:id/submit', ApplicationController.submit);
 
 export default router;

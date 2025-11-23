@@ -7,7 +7,7 @@ export default function Sidebar() {
     const { logout, user } = useAuth()
 
     const menuItems = [
-        { path: '/', icon: FaHome, label: 'Vue d\'ensemble' },
+        { path: '/dashboard', icon: FaHome, label: 'Vue d\'ensemble' },
         { path: '/jobs', icon: FaSearch, label: 'Offres d\'emploi' },
         { path: '/matching', icon: FaMagic, label: 'Matching' },
         { path: '/applications', icon: FaBriefcase, label: 'Candidatures' },

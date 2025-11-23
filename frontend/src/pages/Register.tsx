@@ -22,9 +22,9 @@ export default function Register() {
     setLoading(true)
 
     try {
-      await register(email, password)
+      await register({ email, password })
       toast.success('Compte créé avec succès!')
-      navigate('/')
+      navigate('/dashboard')
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Erreur lors de l\'inscription')
     } finally {

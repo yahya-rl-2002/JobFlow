@@ -2,7 +2,7 @@ import os
 import re
 import json
 from typing import Dict, List, Optional
-import PyPDF2
+
 from docx import Document
 import logging
 
@@ -163,23 +163,32 @@ class CVParser:
         return data
     
     def _extract_from_pdf(self, file_path: str) -> str:
-        """Extrait le texte d'un PDF"""
+        """Extrait le texte d'un PDF avec pdfplumber (plus robuste)"""
         text = ''
         try:
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                
+            import pdfplumber
+            
+            with pdfplumber.open(file_path) as pdf:
                 # Vérifier que le PDF n'est pas vide
-                if len(pdf_reader.pages) == 0:
+                if len(pdf.pages) == 0:
                     raise ValueError('PDF file is empty or corrupted')
                 
-                for page_num, page in enumerate(pdf_reader.pages):
+                for page_num, page in enumerate(pdf.pages):
                     try:
                         page_text = page.extract_text()
                         if page_text:
                             text += page_text + '\n'
                         else:
-                            logger.warning(f'No text extracted from page {page_num + 1}')
+                            # Essayer d'extraire les tableaux si pas de texte brut
+                            tables = page.extract_tables()
+                            for table in tables:
+                                for row in table:
+                                    # Filtrer les None et joindre
+                                    row_text = ' | '.join([str(cell) for cell in row if cell])
+                                    text += row_text + '\n'
+                                    
+                            if not page_text and not tables:
+                                logger.warning(f'No text extracted from page {page_num + 1}')
                     except Exception as page_error:
                         logger.warning(f'Error extracting text from page {page_num + 1}: {str(page_error)}')
                         continue
@@ -187,6 +196,9 @@ class CVParser:
                 if not text.strip():
                     raise ValueError('No text could be extracted from PDF. The PDF might be image-based or encrypted.')
                     
+        except ImportError:
+            logger.error("pdfplumber not installed. Please run 'pip install pdfplumber'")
+            raise
         except Exception as e:
             logger.error(f'Error extracting PDF text: {str(e)}')
             raise ValueError(f'Failed to extract text from PDF: {str(e)}')

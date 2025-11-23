@@ -21,9 +21,10 @@ export default function LinkedInCallback() {
   const hasFetched = useRef(false);
 
   useEffect(() => {
-    const handleCallback = async () => {
-      if (processing || hasFetched.current) return;
+    // Prevent double invocation in Strict Mode
+    if (hasFetched.current) return;
 
+    const handleCallback = async () => {
       // Handle errors
       if (error) {
         hasFetched.current = true;
@@ -54,6 +55,7 @@ export default function LinkedInCallback() {
         return;
       }
 
+      // Lock immediately before any async operation
       hasFetched.current = true;
       setProcessing(true);
 
@@ -91,9 +93,13 @@ export default function LinkedInCallback() {
         // Store token and login user
         if (data.token) {
           localStorage.setItem('token', data.token);
-          toast.success('Connexion LinkedIn réussie!');
-          navigate('/');
-          window.location.reload(); // Ensure auth context updates
+          toast.success('Connexion réussie ! Redirection vers votre tableau de bord...');
+
+          // Small delay to let the user see the success message
+          setTimeout(() => {
+            navigate('/dashboard');
+            window.location.reload(); // Ensure auth context updates
+          }, 1000);
         } else {
           throw new Error('Token manquant dans la réponse');
         }
@@ -107,7 +113,7 @@ export default function LinkedInCallback() {
     };
 
     handleCallback();
-  }, [code, error, state, intent, processing, navigate]);
+  }, [code, error, state, intent, navigate, errorDescription]);
 
   return (
     <div style={{

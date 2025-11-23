@@ -20,12 +20,13 @@ export class JobController {
 
       const jobs = await JobOfferModel.search({
         platform: platform as string,
-        location: location as string,
+        location: location as string | string[],
         job_type: job_type as string,
         remote: remote === 'true',
-        keywords: keywords as string,
+        keywords: keywords as string | string[],
         limit: parseInt(limit as string),
         offset: parseInt(offset as string),
+        user_id: req.userId!, // Filter by current user
       });
 
       res.json({
@@ -95,10 +96,16 @@ export class JobController {
         }
       }
 
-      // Save jobs to database
+      // Save jobs to database with user_id
       if (jobs.length > 0) {
-        await JobOfferModel.bulkCreate(jobs);
-        logger.info(`Saved ${jobs.length} jobs to database`);
+        // Add user_id to each job
+        const userJobs = jobs.map(job => ({
+          ...job,
+          user_id: req.userId!
+        }));
+
+        await JobOfferModel.bulkCreate(userJobs);
+        logger.info(`Saved ${jobs.length} jobs to database for user ${req.userId}`);
       }
 
       res.json({

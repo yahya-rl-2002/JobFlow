@@ -28,7 +28,7 @@ export class AuthController {
       const token = jwt.sign(
         { userId: user.id, email: user.email },
         process.env.JWT_SECRET || 'secret',
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'] }
       );
 
       res.status(201).json({
@@ -72,7 +72,7 @@ export class AuthController {
       const token = jwt.sign(
         { userId: user.id, email: user.email },
         process.env.JWT_SECRET || 'secret',
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'] }
       );
 
       res.json({
@@ -105,7 +105,7 @@ export class AuthController {
       const newToken = jwt.sign(
         { userId: decoded.userId, email: decoded.email },
         process.env.JWT_SECRET || 'secret',
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'] }
       );
 
       res.json({ token: newToken });
@@ -163,7 +163,9 @@ export class AuthController {
           gdpr_consent: true, // Implicit consent via LinkedIn
         });
 
-        logger.info(`New user created via LinkedIn: ${email}`);
+        logger.info(`New user created via LinkedIn: ${email} (ID: ${user.id})`);
+      } else {
+        logger.info(`Existing user logged in via LinkedIn: ${email} (ID: ${user.id})`);
       }
 
       // Save LinkedIn token for the user
@@ -173,7 +175,7 @@ export class AuthController {
       const jwtToken = jwt.sign(
         { userId: user.id, email: user.email },
         process.env.JWT_SECRET || 'secret',
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'] }
       );
 
       res.json({

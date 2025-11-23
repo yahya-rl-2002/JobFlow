@@ -13,6 +13,7 @@ import Matching from './pages/Matching'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 import LinkedInCallback from './pages/LinkedInCallback'
+import LandingPage from './pages/LandingPage'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,7 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/auth/linkedin/callback" element={<LinkedInCallback />} />
@@ -34,7 +36,7 @@ function App() {
               <PrivateRoute>
                 <Layout>
                   <Routes>
-                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/cvs" element={<CVUpload />} />
                     <Route path="/jobs" element={<JobSearch />} />
                     <Route path="/applications" element={<Applications />} />

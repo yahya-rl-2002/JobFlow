@@ -18,7 +18,7 @@ export default function Login() {
     try {
       await login(email, password)
       toast.success('Connexion réussie!')
-      navigate('/')
+      navigate('/dashboard')
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Erreur de connexion')
     } finally {

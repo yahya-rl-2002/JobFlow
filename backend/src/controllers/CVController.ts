@@ -95,15 +95,15 @@ export class CVController {
 
       // Call NLP service to parse CV
       const nlpServiceUrl = process.env.NLP_SERVICE_URL || 'http://127.0.0.1:5001'; // Utiliser 127.0.0.1 au lieu de localhost pour éviter IPv6
-      
+
       try {
-        
+
         // Convertir le chemin en chemin absolu si nécessaire
         let filePath = cv.file_path;
-        
+
         // Liste des chemins possibles à essayer
         const possiblePaths = [];
-        
+
         // Si c'est déjà un chemin absolu, l'utiliser
         if (path.isAbsolute(filePath)) {
           possiblePaths.push(filePath);
@@ -121,7 +121,7 @@ export class CVController {
             possiblePaths.push(path.join(process.cwd(), 'backend', 'uploads', path.basename(filePath)));
           }
         }
-        
+
         // Essayer chaque chemin jusqu'à trouver celui qui existe
         let fileExists = false;
         for (const testPath of possiblePaths) {
@@ -135,17 +135,17 @@ export class CVController {
             continue;
           }
         }
-        
+
         if (!fileExists) {
           logger.error(`CV file not found. Tried paths: ${possiblePaths.join(', ')}`);
           throw new Error(`CV file not found: ${cv.file_path}. Tried: ${possiblePaths.join(', ')}`);
         }
-        
+
         // S'assurer que le chemin est absolu
         filePath = path.resolve(filePath);
-        
+
         logger.info(`Parsing CV: ${filePath}`);
-        
+
         const response = await axios.post(`${nlpServiceUrl}/parse-cv`, {
           file_path: filePath,
         });
@@ -161,7 +161,7 @@ export class CVController {
         await CVModel.update(cv.id!, { parsed_data: parsedData });
 
         logger.info(`CV ${cv.id} parsed successfully`);
-        
+
         res.json({
           message: 'CV parsed successfully',
           parsed_data: parsedData,
@@ -173,10 +173,10 @@ export class CVController {
           file_path: cv.file_path,
           stack: error.stack,
         });
-        
+
         const errorMessage = error.response?.data?.error || error.message || 'Unknown error occurred';
         res.status(500).json({
-          error: 'Failed to parse CV',
+          error: `Failed to parse CV: ${errorMessage}`,
           message: errorMessage,
           details: process.env.NODE_ENV === 'development' ? {
             file_path: cv.file_path,
