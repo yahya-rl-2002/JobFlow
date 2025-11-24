@@ -292,53 +292,110 @@ export default function JobSearch() {
       // await loadJobs() 
     } catch (error: any) {
       console.error('Bulk apply error:', error)
+      console.error('Error details:', {
+        status: error.response?.status,
+        code: error.response?.data?.code,
+        message: error.response?.data?.error,
+        details: error.response?.data?.details
+      })
       
       const errorMessage = error.response?.data?.error || error.message || 'Erreur inconnue'
       const errorCode = error.response?.data?.code
       
       // Messages d'erreur plus clairs selon le code d'erreur
       let userMessage = errorMessage
-      let shouldRedirectToProfile = false
+      let shouldRedirectToSettings = false
       
       if (errorCode === 'CV_NOT_FOUND' || errorCode === 'CV_FILE_NOT_FOUND') {
         userMessage = 'Aucun CV trouvé. Veuillez d\'abord uploader un CV dans la section "CVs".'
-      } else if (errorCode === 'LINKEDIN_NOT_CONNECTED' || errorCode === 'LINKEDIN_TOKEN_EXPIRED') {
-        userMessage = 'LinkedIn non connecté. Veuillez connecter votre compte LinkedIn via OAuth dans les paramètres.'
-        shouldRedirectToProfile = true
-      } else if (errorCode === 'INDEED_CREDENTIALS_MISSING') {
-        userMessage = 'Identifiants Indeed non configurés. Veuillez les configurer dans votre profil.'
-        shouldRedirectToProfile = true
-      } else if (errorCode === 'NO_AUTHENTICATION') {
-        userMessage = 'Aucune authentification configurée. Veuillez connecter LinkedIn ou configurer Indeed dans votre profil.'
-        shouldRedirectToProfile = true
-      } else if (errorCode === 'MISSING_CREDENTIALS' || errorCode === 'MISSING_PLATFORM_CREDENTIALS') {
-        userMessage = 'Authentification manquante. Veuillez connecter LinkedIn ou configurer Indeed dans votre profil.'
-        shouldRedirectToProfile = true
+      } else if (errorCode === 'LINKEDIN_NOT_CONNECTED' || 
+                 errorCode === 'LINKEDIN_TOKEN_EXPIRED' || 
+                 errorCode === 'LINKEDIN_TOKEN_MISSING' ||
+                 errorCode === 'LINKEDIN_REFRESH_TOKEN_EXPIRED' ||
+                 errorCode === 'LINKEDIN_NO_REFRESH_TOKEN' ||
+                 errorCode === 'LINKEDIN_REAUTH_REQUIRED') {
+        // Message spécifique selon le code d'erreur
+        if (errorCode === 'LINKEDIN_REAUTH_REQUIRED') {
+          userMessage = '🔐 Votre session LinkedIn a expiré. Veuillez vous reconnecter à LinkedIn pour continuer.'
+        } else if (errorCode === 'LINKEDIN_REFRESH_TOKEN_EXPIRED') {
+          userMessage = '⏰ Votre session LinkedIn a expiré. Veuillez vous reconnecter à LinkedIn dans les paramètres.'
+        } else {
+          userMessage = '🔗 LinkedIn non connecté. Veuillez connecter votre compte LinkedIn dans les paramètres.'
+        }
+        shouldRedirectToSettings = true
+      } else if (errorCode === 'NLP_SERVICE_ERROR' || errorCode === 'NLP_SERVICE_UNAVAILABLE') {
+        userMessage = 'Service de candidature indisponible. Veuillez réessayer plus tard ou vérifier que le service NLP est démarré.'
+      } else if (errorCode === 'TIMEOUT_ERROR') {
+        userMessage = 'Timeout lors de la candidature. Le processus prend trop de temps. Essayez avec moins d\'offres.'
+      } else if (errorCode === 'APPLICATION_ERROR') {
+        userMessage = errorMessage || 'Erreur lors de la candidature. Vérifiez les logs pour plus de détails.'
       } else if (error.response?.status === 400) {
         // Vérifier si le message contient des informations sur l'authentification
-        if (errorMessage.toLowerCase().includes('linkedin') || errorMessage.toLowerCase().includes('connect')) {
-          userMessage = 'LinkedIn non connecté. Veuillez connecter votre compte LinkedIn via OAuth dans votre profil.'
-          shouldRedirectToProfile = true
-        } else if (errorMessage.toLowerCase().includes('credential') || errorMessage.toLowerCase().includes('identifiant')) {
-          userMessage = 'Authentification manquante. Veuillez connecter LinkedIn ou configurer Indeed dans votre profil.'
-          shouldRedirectToProfile = true
+        if (errorMessage.toLowerCase().includes('linkedin') || errorMessage.toLowerCase().includes('connect') || errorMessage.toLowerCase().includes('token')) {
+          userMessage = 'LinkedIn non connecté. Veuillez connecter votre compte LinkedIn via OAuth dans les paramètres.'
+          shouldRedirectToSettings = true
+        } else if (errorMessage.toLowerCase().includes('cv') || errorMessage.toLowerCase().includes('fichier')) {
+          userMessage = 'CV manquant ou invalide. Veuillez uploader un CV dans la section "CVs".'
         } else {
           userMessage = errorMessage || 'Requête invalide. Vérifiez que vous avez sélectionné des offres et que votre CV est uploadé.'
         }
+      } else if (error.response?.status === 503) {
+        userMessage = 'Service de candidature indisponible. Veuillez vérifier que le service NLP est démarré.'
+      } else if (error.response?.status === 504) {
+        userMessage = 'Timeout lors de la candidature. Essayez avec moins d\'offres.'
       }
       
-      toast.error(userMessage, {
-        autoClose: 6000,
-        style: { fontSize: '14px' }
-      })
+      // Afficher le message d'erreur avec le code si disponible
+      const displayMessage = errorCode 
+        ? `${userMessage} (Code: ${errorCode})`
+        : userMessage
       
-      // Rediriger vers les paramètres si nécessaire
-      if (shouldRedirectToProfile) {
+      // Si redirection vers Settings nécessaire, afficher un message spécial
+      if (shouldRedirectToSettings) {
+        toast.error(
+          <div>
+            <div style={{ marginBottom: '10px', fontWeight: '600', fontSize: '15px' }}>
+              {userMessage}
+            </div>
+            <div style={{ fontSize: '13px', color: '#666', marginBottom: '10px' }}>
+              Vous serez redirigé vers les paramètres dans 3 secondes...
+            </div>
+            <button
+              onClick={() => {
+                window.location.href = '/settings'
+              }}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#0077b5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '13px',
+                width: '100%'
+              }}
+            >
+              Aller aux paramètres maintenant →
+            </button>
+          </div>,
+          {
+            autoClose: 10000,
+            style: { fontSize: '14px', minWidth: '350px' }
+          }
+        )
+        
+        // Redirection automatique après 3 secondes
         setTimeout(() => {
-          if (window.confirm('Voulez-vous connecter votre compte LinkedIn maintenant ?')) {
+          if (window.confirm('Redirection vers les paramètres pour reconnecter LinkedIn ?')) {
             window.location.href = '/settings'
           }
-        }, 1000)
+        }, 3000)
+      } else {
+        toast.error(displayMessage, {
+          autoClose: 8000,
+          style: { fontSize: '14px' }
+        })
       }
     } finally {
       setApplying(false)

@@ -161,15 +161,20 @@ export class LinkedInService {
       // Vérifier si le token est expiré (avec une marge de 5 minutes)
       const now = new Date();
       const expiresAt = token.expires_at ? new Date(token.expires_at) : null;
-      const timeUntilExpiry = expiresAt ? expiresAt.getTime() - now.getTime() : 0;
+      const timeUntilExpiry = expiresAt ? expiresAt.getTime() - now.getTime() : -1; // -1 si pas de date d'expiration
+      const isExpired = timeUntilExpiry <= 0;
+      const isExpiringSoon = timeUntilExpiry > 0 && timeUntilExpiry < 5 * 60 * 1000; // Moins de 5 minutes
 
-      if (timeUntilExpiry < 5 * 60 * 1000) {
-        // Token expiré ou sur le point d'expirer, le rafraîchir
+      if (isExpired || isExpiringSoon) {
+        // Token expiré ou sur le point d'expirer, essayer de le rafraîchir
         if (!decryptedRefreshToken) {
-          throw new LinkedInTokenError('Token expired and no refresh token available. Please re-authenticate.');
+          logger.warn(`LinkedIn token expired and no refresh token available for user ${userId}`);
+          // Supprimer le token expiré
+          await LinkedInTokenModel.delete(userId);
+          throw new LinkedInTokenError('Token expired and no refresh token available. Please re-authenticate with LinkedIn.');
         }
 
-        logger.info(`Refreshing LinkedIn token for user ${userId}`);
+        logger.info(`Refreshing LinkedIn token for user ${userId} (expired: ${isExpired}, expiring soon: ${isExpiringSoon})`);
 
         try {
           const newTokenData = await this.refreshAccessToken(decryptedRefreshToken);
@@ -191,18 +196,32 @@ export class LinkedInService {
             scope: newTokenData.scope,
           });
 
-          logger.info(`Token refreshed successfully for user ${userId}`);
+          logger.info(`Token refreshed successfully for user ${userId}, new expiry: ${newExpiresAt.toISOString()}`);
           return newTokenData.access_token;
         } catch (refreshError: any) {
-          logger.error('Failed to refresh token', { userId, error: refreshError });
+          logger.error('Failed to refresh LinkedIn token', { 
+            userId, 
+            error: refreshError?.message || String(refreshError),
+            errorResponse: refreshError?.response?.data,
+            errorStatus: refreshError?.response?.status
+          });
 
-          // Si le refresh token est aussi expiré, supprimer le token
-          if (refreshError.message?.includes('expired') || refreshError.message?.includes('invalid')) {
+          // Si le refresh token est aussi expiré ou invalide, supprimer le token
+          const errorMessage = refreshError?.message || String(refreshError) || '';
+          const errorData = refreshError?.response?.data || {};
+          const isTokenInvalid = errorMessage.toLowerCase().includes('expired') || 
+                                 errorMessage.toLowerCase().includes('invalid') ||
+                                 errorData.error === 'invalid_grant' ||
+                                 errorData.error === 'invalid_token' ||
+                                 refreshError?.response?.status === 400;
+
+          if (isTokenInvalid) {
+            logger.warn(`Refresh token expired or invalid for user ${userId}, deleting token`);
             await LinkedInTokenModel.delete(userId);
-            throw new LinkedInTokenError('Refresh token expired. Please re-authenticate with LinkedIn.');
+            throw new LinkedInTokenError('Refresh token expired or invalid. Please re-authenticate with LinkedIn in your settings.');
           }
 
-          throw new LinkedInTokenError('Failed to refresh token', refreshError);
+          throw new LinkedInTokenError(`Failed to refresh token: ${errorMessage}`, refreshError);
         }
       }
 

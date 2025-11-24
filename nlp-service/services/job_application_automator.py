@@ -17,11 +17,16 @@ class JobApplicationAutomator:
     """
     Automatise les candidatures réelles sur LinkedIn et Indeed
     en utilisant Selenium pour contrôler un navigateur.
+    Optimisé pour réutiliser la session LinkedIn OAuth.
     """
     
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = True, reuse_session: bool = True):
         self.headless = headless
+        self.reuse_session = reuse_session
         self.driver = None
+        self.linkedin_session_active = False
+        self.last_application_time = 0
+        self.min_delay_between_applications = 3  # Secondes minimum entre candidatures
         
     def _setup_driver(self):
         """Configure le driver Selenium avec webdriver-manager pour télécharger automatiquement ChromeDriver"""
@@ -55,61 +60,24 @@ class JobApplicationAutomator:
         cover_letter: Optional[str] = None
     ) -> Dict:
         """
-        Postule à une offre LinkedIn en utilisant le token OAuth
-        Si le token OAuth n'est pas disponible, utilise Selenium avec credentials
+        Postule à une offre LinkedIn en utilisant la session OAuth réutilisable
+        Optimisé pour les candidatures multiples avec réutilisation de session
         """
         try:
+            # S'assurer que le driver est initialisé
             if not self.driver:
                 self._setup_driver()
             
-            # Si on a un token OAuth, on peut essayer de l'utiliser pour se connecter
-            # Note: LinkedIn ne permet pas directement de se connecter avec un token OAuth via Selenium
-            # On doit utiliser l'API LinkedIn ou injecter le token dans la session
-            # Pour l'instant, on va utiliser Selenium mais on peut améliorer ça plus tard
+            # Si on a un token OAuth et qu'on n'a pas encore de session active, l'établir
+            if linkedin_oauth_token and not self.linkedin_session_active:
+                logger.info("Establishing LinkedIn session with OAuth token")
+                if not self._ensure_linkedin_session(linkedin_oauth_token):
+                    logger.warning("Could not establish LinkedIn session, trying direct access")
             
-            # 1. Se connecter à LinkedIn avec le token OAuth
-            # On injecte le token dans les cookies de session
-            if linkedin_oauth_token:
-                logger.info(f"Using LinkedIn OAuth token for job: {job_url}")
-                # Aller sur LinkedIn et injecter le token
-                self.driver.get("https://www.linkedin.com")
-                time.sleep(2)
-                
-                # Injecter le token comme cookie (méthode alternative)
-                # Note: Cette méthode peut ne pas fonctionner car LinkedIn vérifie l'origine
-                # On va plutôt utiliser l'API LinkedIn si possible
-                try:
-                    # Essayer d'utiliser l'API LinkedIn directement
-                    import requests
-                    # Pour l'instant, on va utiliser Selenium mais avec une approche différente
-                    # On peut améliorer ça en utilisant l'API LinkedIn Job Applications
-                    logger.info("Attempting to use LinkedIn API with OAuth token")
-                except:
-                    pass
-            
-            # Méthode de fallback: utiliser Selenium normalement
-            # Note: Avec OAuth, on devrait normalement utiliser l'API LinkedIn
-            # mais pour l'automatisation complète, on utilise Selenium
+            # Accéder directement à la page de l'offre (session déjà établie)
             logger.info(f"Accessing LinkedIn job page: {job_url}")
             self.driver.get(job_url)
             time.sleep(3)
-            
-            # Vérifier si on est déjà connecté (si le token OAuth a fonctionné)
-            if "login" in self.driver.current_url.lower():
-                return {
-                    'success': False,
-                    'message': 'LinkedIn authentication required. Please ensure your LinkedIn account is connected via OAuth.',
-                    'job_url': job_url
-                }
-            
-            logger.info("Successfully accessed LinkedIn job page")
-            
-            # 2. Aller directement sur la page de l'offre
-            # Avec OAuth, on devrait être déjà authentifié via l'API
-            # Mais pour l'automatisation complète, on utilise Selenium
-            logger.info(f"Navigating to job: {job_url}")
-            self.driver.get(job_url)
-            time.sleep(4)
             
             # Si on est redirigé vers la page de connexion, le token OAuth n'a pas fonctionné
             if "login" in self.driver.current_url.lower() or "challenge" in self.driver.current_url.lower():
@@ -421,59 +389,178 @@ class JobApplicationAutomator:
                 'job_url': job_url
             }
     
+    def _ensure_linkedin_session(self, linkedin_oauth_token: Optional[str] = None) -> bool:
+        """
+        S'assure qu'une session LinkedIn est active
+        Réutilise la session si elle existe déjà
+        """
+        if self.linkedin_session_active and self.driver:
+            # Vérifier que la session est toujours valide
+            try:
+                self.driver.get("https://www.linkedin.com/feed")
+                time.sleep(2)
+                if "login" not in self.driver.current_url.lower():
+                    logger.info("LinkedIn session is still active, reusing it")
+                    return True
+            except:
+                pass
+        
+        # Créer une nouvelle session si nécessaire
+        if not self.driver:
+            self._setup_driver()
+        
+        # Se connecter à LinkedIn (avec OAuth, on devrait être déjà connecté)
+        try:
+            self.driver.get("https://www.linkedin.com/feed")
+            time.sleep(3)
+            
+            # Vérifier si on est connecté
+            if "login" not in self.driver.current_url.lower() and "challenge" not in self.driver.current_url.lower():
+                self.linkedin_session_active = True
+                logger.info("LinkedIn session established successfully")
+                return True
+            else:
+                logger.warning("LinkedIn session not active, user may need to login manually")
+                self.linkedin_session_active = False
+                return False
+        except Exception as e:
+            logger.error(f"Error establishing LinkedIn session: {str(e)}")
+            self.linkedin_session_active = False
+            return False
+    
     def apply_to_multiple_jobs(
         self,
         jobs: List[Dict],
         cv_path: str,
         linkedin_oauth_token: Optional[str] = None,
         credentials: Optional[Dict] = None,
-        cover_letter: Optional[str] = None
+        cover_letter: Optional[str] = None,
+        max_retries: int = 2,
+        delay_between_applications: int = 3
     ) -> List[Dict]:
         """
-        Postule à plusieurs offres en une seule session
-        Utilise OAuth LinkedIn si disponible, sinon credentials
+        Postule à plusieurs offres en une seule session optimisée
+        - Réutilise la session LinkedIn pour toutes les candidatures
+        - Gère les retries automatiques
+        - Optimise les délais entre candidatures
+        - Utilise OAuth LinkedIn si disponible
         """
         results = []
         credentials = credentials or {}
+        linkedin_jobs = [j for j in jobs if j.get('platform', '').lower() == 'linkedin']
+        indeed_jobs = [j for j in jobs if j.get('platform', '').lower() == 'indeed']
+        other_jobs = [j for j in jobs if j.get('platform', '').lower() not in ['linkedin', 'indeed']]
         
         try:
-            for i, job in enumerate(jobs):
-                logger.info(f"Applying to job {i+1}/{len(jobs)}: {job.get('title', 'Unknown')}")
+            # Établir la session LinkedIn une seule fois pour toutes les candidatures LinkedIn
+            if linkedin_jobs and linkedin_oauth_token:
+                logger.info(f"Establishing LinkedIn session for {len(linkedin_jobs)} LinkedIn jobs")
+                if not self._ensure_linkedin_session(linkedin_oauth_token):
+                    logger.warning("Could not establish LinkedIn session, will try anyway")
+            
+            # Traiter toutes les candidatures LinkedIn en une session
+            for i, job in enumerate(linkedin_jobs):
+                logger.info(f"Applying to LinkedIn job {i+1}/{len(linkedin_jobs)}: {job.get('title', 'Unknown')}")
                 
-                if job.get('platform') == 'linkedin':
-                    result = self.apply_to_linkedin_job(
-                        job_url=job.get('url', ''),
-                        cv_path=cv_path,
-                        linkedin_oauth_token=linkedin_oauth_token,
-                        cover_letter=cover_letter
-                    )
-                elif job.get('platform') == 'indeed':
-                    result = self.apply_to_indeed_job(
-                        job_url=job.get('url', ''),
-                        cv_path=cv_path,
-                        indeed_email=credentials.get('indeed_email', ''),
-                        indeed_password=credentials.get('indeed_password', ''),
-                        cover_letter=cover_letter
-                    )
-                else:
+                # Retry logic
+                retry_count = 0
+                result = None
+                
+                while retry_count <= max_retries:
+                    try:
+                        result = self.apply_to_linkedin_job(
+                            job_url=job.get('url', ''),
+                            cv_path=cv_path,
+                            linkedin_oauth_token=linkedin_oauth_token,
+                            cover_letter=cover_letter
+                        )
+                        
+                        # Si succès, sortir de la boucle de retry
+                        if result.get('success'):
+                            break
+                        
+                        # Si échec mais pas d'erreur critique, retry
+                        if retry_count < max_retries:
+                            logger.info(f"Retrying application for job {job.get('id')} (attempt {retry_count + 2}/{max_retries + 1})")
+                            time.sleep(2)  # Court délai avant retry
+                        
+                        retry_count += 1
+                    except Exception as e:
+                        logger.error(f"Error applying to job {job.get('id')}: {str(e)}")
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            time.sleep(2)
+                        else:
+                            result = {
+                                'success': False,
+                                'message': f'Error after {max_retries + 1} attempts: {str(e)}',
+                                'job_url': job.get('url', '')
+                            }
+                            break
+                
+                if not result:
                     result = {
                         'success': False,
-                        'message': f"Unsupported platform: {job.get('platform')}",
+                        'message': 'Failed to apply after all retries',
                         'job_url': job.get('url', '')
                     }
                 
                 result['job_id'] = job.get('id')
                 result['job_title'] = job.get('title')
+                result['retry_count'] = retry_count
                 results.append(result)
                 
-                # Attendre entre les candidatures pour éviter le rate limiting
-                if i < len(jobs) - 1:  # Ne pas attendre après la dernière
-                    time.sleep(5)
+                # Délai intelligent entre candidatures (évite le rate limiting)
+                if i < len(linkedin_jobs) - 1:
+                    # Délai adaptatif : plus long si échec, plus court si succès
+                    delay = delay_between_applications * 2 if not result.get('success') else delay_between_applications
+                    # Ajouter un peu de randomisation pour paraître plus humain
+                    import random
+                    delay += random.uniform(0, 2)
+                    logger.info(f"Waiting {delay:.1f}s before next application...")
+                    time.sleep(delay)
+            
+            # Traiter les candidatures Indeed
+            for i, job in enumerate(indeed_jobs):
+                logger.info(f"Applying to Indeed job {i+1}/{len(indeed_jobs)}: {job.get('title', 'Unknown')}")
+                
+                result = self.apply_to_indeed_job(
+                    job_url=job.get('url', ''),
+                    cv_path=cv_path,
+                    indeed_email=credentials.get('indeed_email', ''),
+                    indeed_password=credentials.get('indeed_password', ''),
+                    cover_letter=cover_letter
+                )
+                
+                result['job_id'] = job.get('id')
+                result['job_title'] = job.get('title')
+                results.append(result)
+                
+                if i < len(indeed_jobs) - 1:
+                    time.sleep(delay_between_applications)
+            
+            # Traiter les autres plateformes
+            for job in other_jobs:
+                result = {
+                    'success': False,
+                    'message': f"Unsupported platform: {job.get('platform')}",
+                    'job_url': job.get('url', ''),
+                    'job_id': job.get('id'),
+                    'job_title': job.get('title')
+                }
+                results.append(result)
                 
         finally:
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
+            # Ne pas fermer le driver si on réutilise la session
+            if not self.reuse_session:
+                if self.driver:
+                    self.driver.quit()
+                    self.driver = None
+                    self.linkedin_session_active = False
+        
+        # Statistiques
+        success_count = sum(1 for r in results if r.get('success'))
+        logger.info(f"Bulk application completed: {success_count}/{len(results)} successful")
         
         return results
     

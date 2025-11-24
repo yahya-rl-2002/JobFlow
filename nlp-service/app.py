@@ -326,23 +326,26 @@ def scrape_jobs():
 def apply_jobs():
     """
     Postule automatiquement à plusieurs offres d'emploi en utilisant Selenium
-    Supporte OAuth LinkedIn et credentials Indeed
+    Optimisé pour réutiliser la session LinkedIn OAuth pour toutes les candidatures
+    Supporte retry automatique et gestion intelligente des délais
     """
     try:
         data = request.json
         jobs = data.get('jobs', [])  # Liste des offres avec id, url, platform, title
         cv_path = data.get('cv_path')
-        linkedin_oauth_token = data.get('linkedin_oauth_token')  # Token OAuth LinkedIn
+        linkedin_oauth_token = data.get('credentials', {}).get('linkedin_oauth_token') or data.get('linkedin_oauth_token')
         credentials = data.get('credentials', {})  # indeed_email, indeed_password
         cover_letter = data.get('cover_letter')
+        max_retries = data.get('max_retries', 2)  # Nombre de tentatives en cas d'échec
+        delay_between_applications = data.get('delay_between_applications', 3)  # Délai entre candidatures
         
         if not jobs or not cv_path:
             return jsonify({'error': 'jobs and cv_path are required'}), 400
         
         # Vérifier qu'on a soit un token LinkedIn OAuth, soit des credentials Indeed
-        platforms = [job.get('platform') for job in jobs]
-        needs_linkedin = 'linkedin' in platforms
-        needs_indeed = 'indeed' in platforms
+        platforms = [job.get('platform', '').lower() for job in jobs]
+        needs_linkedin = any('linkedin' in p for p in platforms)
+        needs_indeed = any('indeed' in p for p in platforms)
         
         if needs_linkedin and not linkedin_oauth_token:
             return jsonify({'error': 'LinkedIn OAuth token is required for LinkedIn jobs'}), 400
@@ -352,11 +355,13 @@ def apply_jobs():
         
         from services.job_application_automator import JobApplicationAutomator
         
-        logger.info(f'Starting automated application process for {len(jobs)} jobs')
+        logger.info(f'Starting optimized bulk application process for {len(jobs)} jobs')
         logger.info(f'LinkedIn OAuth token: {"provided" if linkedin_oauth_token else "not provided"}')
         logger.info(f'Indeed credentials: {"provided" if credentials.get("indeed_email") else "not provided"}')
+        logger.info(f'Max retries: {max_retries}, Delay: {delay_between_applications}s')
         
-        automator = JobApplicationAutomator(headless=True)
+        # Créer l'automatiseur avec réutilisation de session
+        automator = JobApplicationAutomator(headless=True, reuse_session=True)
         
         try:
             results = automator.apply_to_multiple_jobs(
@@ -364,21 +369,26 @@ def apply_jobs():
                 cv_path=cv_path,
                 linkedin_oauth_token=linkedin_oauth_token,
                 credentials=credentials,
-                cover_letter=cover_letter
+                cover_letter=cover_letter,
+                max_retries=max_retries,
+                delay_between_applications=delay_between_applications
             )
             
             success_count = sum(1 for r in results if r.get('success'))
+            failed_count = len(results) - success_count
             
-            logger.info(f'Application process completed: {success_count}/{len(jobs)} successful')
+            logger.info(f'Bulk application completed: {success_count}/{len(results)} successful')
             
             return jsonify({
                 'success': True,
                 'results': results,
                 'total': len(results),
                 'success_count': success_count,
-                'failed_count': len(results) - success_count
+                'failed_count': failed_count,
+                'message': f'Successfully applied to {success_count} out of {len(results)} jobs'
             })
         finally:
+            # Fermer le driver pour libérer les ressources
             automator.close()
             
     except Exception as e:
