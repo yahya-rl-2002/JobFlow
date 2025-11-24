@@ -9,6 +9,7 @@ import { FaUser, FaCog, FaSave, FaLinkedin, FaEnvelope, FaPhone, FaBriefcase, Fa
 export default function Profile() {
   const [profile, setProfile] = useState<any>(null);
   const [preferences, setPreferences] = useState<any>(null);
+  const [credentials, setCredentials] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
 
@@ -22,12 +23,14 @@ export default function Profile() {
 
   const loadData = async () => {
     try {
-      const [profileData, prefsData] = await Promise.all([
+      const [profileData, prefsData, credsData] = await Promise.all([
         userService.getProfile(),
         userService.getPreferences(),
+        userService.getCredentials().catch(() => null), // Ne pas échouer si pas encore configuré
       ]);
       setProfile(profileData);
       setPreferences(prefsData);
+      setCredentials(credsData);
     } catch (error: any) {
       toast.error('Erreur chargement profil');
     } finally {
@@ -81,6 +84,29 @@ export default function Profile() {
       await loadData();
     } catch (error: any) {
       toast.error('Erreur mise à jour préférences');
+    }
+  };
+
+  const handleUpdateCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const formData = new FormData(e.target as HTMLFormElement);
+      const data = {
+        linkedin_email: formData.get('linkedin_email')?.toString() || undefined,
+        linkedin_password: formData.get('linkedin_password')?.toString() || undefined,
+        indeed_email: formData.get('indeed_email')?.toString() || undefined,
+        indeed_password: formData.get('indeed_password')?.toString() || undefined,
+      };
+      
+      // Ne pas envoyer les mots de passe vides
+      if (!data.linkedin_password) delete data.linkedin_password;
+      if (!data.indeed_password) delete data.indeed_password;
+      
+      await userService.updateCredentials(data);
+      toast.success('Identifiants mis à jour avec succès');
+      await loadData();
+    } catch (error: any) {
+      toast.error('Erreur mise à jour identifiants: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -428,6 +454,132 @@ export default function Profile() {
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-color)'}
             >
               <FaSave /> Mettre à jour les préférences
+            </button>
+          </form>
+        </div>
+
+        {/* Section Credentials pour l'automatisation */}
+        <div style={{
+          backgroundColor: 'white',
+          padding: '24px',
+          borderRadius: '16px',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+            <FaRobot size={24} color="var(--primary-color)" />
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                Identifiants pour Candidature Automatique
+              </h2>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                Configurez vos identifiants LinkedIn/Indeed pour postuler automatiquement
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleUpdateCredentials}>
+            {/* LinkedIn Credentials */}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                <FaLinkedin color="#0077b5" />
+                LinkedIn
+              </label>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                <input
+                  type="email"
+                  name="linkedin_email"
+                  placeholder="Email LinkedIn"
+                  defaultValue={credentials?.linkedin_email || ''}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    outline: 'none',
+                  }}
+                />
+                <input
+                  type="password"
+                  name="linkedin_password"
+                  placeholder={credentials?.has_linkedin_password ? 'Nouveau mot de passe (laisser vide pour conserver)' : 'Mot de passe LinkedIn'}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Indeed Credentials */}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                <FaBriefcase color="#2164f3" />
+                Indeed
+              </label>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                <input
+                  type="email"
+                  name="indeed_email"
+                  placeholder="Email Indeed"
+                  defaultValue={credentials?.indeed_email || ''}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    outline: 'none',
+                  }}
+                />
+                <input
+                  type="password"
+                  name="indeed_password"
+                  placeholder={credentials?.has_indeed_password ? 'Nouveau mot de passe (laisser vide pour conserver)' : 'Mot de passe Indeed'}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#fef3c7',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              fontSize: '0.875rem',
+              color: '#92400e'
+            }}>
+              <strong>🔒 Sécurité :</strong> Vos mots de passe sont chiffrés et stockés de manière sécurisée. Ils sont uniquement utilisés pour automatiser vos candidatures.
+            </div>
+
+            <button
+              type="submit"
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: 'var(--primary-color)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'background-color 0.2s',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-color)'}
+            >
+              <FaSave /> Enregistrer les identifiants
             </button>
           </form>
         </div>

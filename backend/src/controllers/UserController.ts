@@ -167,5 +167,58 @@ export class UserController {
       next(error);
     }
   }
+
+  /**
+   * Met à jour les credentials LinkedIn/Indeed de l'utilisateur
+   */
+  static async updateCredentials(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { linkedin_email, linkedin_password, indeed_email, indeed_password } = req.body;
+
+      await UserModel.updateCredentials(req.userId!, {
+        linkedin_email,
+        linkedin_password,
+        indeed_email,
+        indeed_password,
+      });
+
+      res.json({ 
+        message: 'Credentials updated successfully',
+        note: 'Passwords are encrypted and stored securely'
+      });
+    } catch (error) {
+      logger.error('Update credentials error', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Récupère les credentials de l'utilisateur (sans les mots de passe)
+   */
+  static async getCredentials(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const credentials = await UserModel.getCredentials(req.userId!);
+      
+      if (!credentials) {
+        return res.json({
+          linkedin_email: null,
+          indeed_email: null,
+          has_linkedin_password: false,
+          has_indeed_password: false
+        });
+      }
+
+      // Ne pas renvoyer les mots de passe, juste indiquer s'ils existent
+      res.json({
+        linkedin_email: credentials.linkedin_email || null,
+        indeed_email: credentials.indeed_email || null,
+        has_linkedin_password: !!credentials.linkedin_password,
+        has_indeed_password: !!credentials.indeed_password
+      });
+    } catch (error) {
+      logger.error('Get credentials error', error);
+      next(error);
+    }
+  }
 }
 

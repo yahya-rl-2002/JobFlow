@@ -12,6 +12,7 @@ router.use(authenticate);
 router.get('/search', JobController.search);
 router.get('/:id', JobController.getById);
 router.post('/sync', JobController.syncJobs);
+router.delete('/', JobController.deleteAll); // Route to delete all jobs for user
 
 // Nouvelle route pour forcer une synchronisation
 router.post('/sync/force', async (req, res, next) => {

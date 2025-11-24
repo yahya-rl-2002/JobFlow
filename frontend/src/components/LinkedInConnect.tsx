@@ -51,6 +51,8 @@ export default function LinkedInConnect() {
             await linkedinService.connect(code);
             toast.success('LinkedIn connecté avec succès!');
             await checkConnection();
+            // Notifier toutes les pages que LinkedIn est connecté
+            window.dispatchEvent(new CustomEvent('linkedin-connected'));
           } catch (error: any) {
             toast.error(error.response?.data?.error || 'Erreur de connexion LinkedIn');
           } finally {
@@ -111,19 +113,57 @@ export default function LinkedInConnect() {
       {isConnected ? (
         <div>
           <div style={{
-            padding: '15px',
+            padding: '20px',
             backgroundColor: '#d4edda',
-            borderRadius: '4px',
+            borderRadius: '8px',
             marginBottom: '20px',
+            border: '2px solid #28a745',
           }}>
-            <p style={{ color: '#155724', margin: 0 }}>
-              ✓ LinkedIn est connecté
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ 
+                width: '32px', 
+                height: '32px', 
+                borderRadius: '50%', 
+                backgroundColor: '#28a745', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '18px'
+              }}>
+                ✓
+              </div>
+              <p style={{ color: '#155724', margin: 0, fontSize: '1.1rem', fontWeight: '700' }}>
+                LinkedIn est connecté
+              </p>
+            </div>
             {tokenStatus && (
-              <div style={{ marginTop: '10px', fontSize: '14px', color: '#155724' }}>
-                <p>Expire dans: {Math.floor((tokenStatus.expires_in || 0) / 86400)} jours</p>
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #c3e6cb', fontSize: '14px', color: '#155724' }}>
+                {tokenStatus.expires_in && tokenStatus.expires_in > 0 && (
+                  <p style={{ margin: '4px 0' }}>
+                    <strong>⏱️ Expire dans:</strong> {Math.floor(tokenStatus.expires_in / 86400)} jours ({Math.floor(tokenStatus.expires_in / 3600)} heures)
+                  </p>
+                )}
+                {tokenStatus.is_expired && (
+                  <p style={{ margin: '4px 0', color: '#856404' }}>
+                    ⚠️ Token expiré - Reconnectez-vous
+                  </p>
+                )}
                 {tokenStatus.has_refresh_token && (
-                  <p>✓ Refresh token disponible</p>
+                  <p style={{ margin: '4px 0' }}>
+                    ✓ Refresh token disponible (renouvellement automatique)
+                  </p>
+                )}
+                {tokenStatus.scope && (
+                  <p style={{ margin: '4px 0', fontSize: '12px', color: '#6c757d' }}>
+                    Scopes: {tokenStatus.scope}
+                  </p>
+                )}
+                {tokenStatus.expires_at && (
+                  <p style={{ margin: '4px 0', fontSize: '12px', color: '#6c757d' }}>
+                    Date d'expiration: {new Date(tokenStatus.expires_at).toLocaleString('fr-FR')}
+                  </p>
                 )}
               </div>
             )}

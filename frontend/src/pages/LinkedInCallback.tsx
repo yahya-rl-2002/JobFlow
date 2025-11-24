@@ -59,7 +59,7 @@ export default function LinkedInCallback() {
       hasFetched.current = true;
       setProcessing(true);
 
-      // Handle account linking mode (popup)
+      // Handle account linking mode (popup) - redirige vers /settings après connexion
       if (window.opener && intent !== 'login') {
         window.opener.postMessage(
           {
@@ -69,6 +69,12 @@ export default function LinkedInCallback() {
           },
           window.location.origin
         );
+        // Rediriger le parent vers /settings après connexion réussie
+        setTimeout(() => {
+          if (window.opener) {
+            window.opener.location.href = '/settings';
+          }
+        }, 500);
         window.close();
         return;
       }
@@ -93,11 +99,11 @@ export default function LinkedInCallback() {
         // Store token and login user
         if (data.token) {
           localStorage.setItem('token', data.token);
-          toast.success('Connexion réussie ! Redirection vers votre tableau de bord...');
+          toast.success('Connexion réussie ! Redirection vers les paramètres...');
 
           // Small delay to let the user see the success message
           setTimeout(() => {
-            navigate('/dashboard');
+            navigate('/settings');
             window.location.reload(); // Ensure auth context updates
           }, 1000);
         } else {

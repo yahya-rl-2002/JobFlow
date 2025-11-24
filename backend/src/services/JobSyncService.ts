@@ -110,7 +110,7 @@ export class JobSyncService {
           } catch (error: any) {
             logger.error('Error syncing jobs for user', { 
               userId: userPref.user_id, 
-              error: error.message 
+              error: error?.message || String(error) 
             });
             stats.total.errors++;
           }
@@ -135,7 +135,7 @@ export class JobSyncService {
 
       return stats;
     } catch (error: any) {
-      logger.error('Job synchronization error', { error: error.message, stack: error.stack });
+      logger.error('Job synchronization error', { error: error?.message || String(error), stack: error?.stack });
       stats.total.errors++;
       throw error;
     } finally {
@@ -192,7 +192,7 @@ export class JobSyncService {
       logger.error('LinkedIn sync error', { 
         keywords, 
         location, 
-        error: error.message 
+        error: error?.message || String(error) 
       });
       stats.linkedin.errors++;
     }
@@ -222,7 +222,7 @@ export class JobSyncService {
       logger.error('Indeed sync error', { 
         keywords, 
         location, 
-        error: error.message 
+        error: error?.message || String(error) 
       });
       stats.indeed.errors++;
     }
@@ -266,7 +266,7 @@ export class JobSyncService {
       } catch (error: any) {
         logger.error('Error saving job', { 
           external_id: job.external_id, 
-          error: error.message 
+          error: error?.message || String(error) 
         });
       }
     }
@@ -356,7 +356,7 @@ export class JobSyncService {
 
       return stats;
     } catch (error: any) {
-      logger.error(`Error syncing jobs for user ${userId}`, { error: error.message });
+      logger.error(`Error syncing jobs for user ${userId}`, { error: error?.message || String(error) });
       stats.total.errors++;
       throw error;
     }
@@ -391,7 +391,7 @@ export class JobSyncService {
 
       return deletedCount;
     } catch (error: any) {
-      logger.error('Error cleaning up old jobs', { error: error.message });
+      logger.error('Error cleaning up old jobs', { error: error?.message || String(error) });
       throw error;
     }
   }

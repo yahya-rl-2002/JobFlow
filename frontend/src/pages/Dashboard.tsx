@@ -1,10 +1,18 @@
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { applicationService, cvService } from '../services/api'
+import { linkedinService } from '../services/linkedinService'
 import StatCard from '../components/StatCard'
-import { FaFileAlt, FaBriefcase, FaClock, FaCheckCircle, FaPlus, FaSearch } from 'react-icons/fa'
+import { FaFileAlt, FaBriefcase, FaClock, FaCheckCircle, FaPlus, FaSearch, FaLinkedin, FaExclamationTriangle } from 'react-icons/fa'
 import { Link } from 'react-router-dom'
+import { toast } from 'react-toastify'
 
 export default function Dashboard() {
+  const navigate = useNavigate()
+  const [linkedInConnected, setLinkedInConnected] = useState<boolean | null>(null)
+  const [checkingLinkedIn, setCheckingLinkedIn] = useState(true)
+
   const { data: applications } = useQuery({
     queryKey: ['applications'],
     queryFn: () => applicationService.getAll(),
@@ -15,6 +23,71 @@ export default function Dashboard() {
     queryFn: () => cvService.getAll(),
   })
 
+  useEffect(() => {
+    checkLinkedInConnection()
+  }, [])
+
+  const checkLinkedInConnection = async () => {
+    try {
+      const status = await linkedinService.getTokenStatus()
+      setLinkedInConnected(status.connected)
+    } catch (error) {
+      setLinkedInConnected(false)
+    } finally {
+      setCheckingLinkedIn(false)
+    }
+  }
+
+  const handleConnectLinkedIn = async () => {
+    try {
+      const { authorization_url } = await linkedinService.getAuthorizationUrl()
+      
+      const width = 600
+      const height = 700
+      const left = window.screen.width / 2 - width / 2
+      const top = window.screen.height / 2 - height / 2
+
+      const popup = window.open(
+        authorization_url,
+        'LinkedIn Authorization',
+        `width=${width},height=${height},left=${left},top=${top}`
+      )
+
+      const messageListener = async (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return
+
+        if (event.data.type === 'LINKEDIN_AUTH_SUCCESS') {
+          const { code } = event.data
+          try {
+            await linkedinService.connect(code)
+            toast.success('LinkedIn connecté avec succès!')
+            await checkLinkedInConnection()
+          } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Erreur de connexion LinkedIn')
+          } finally {
+            window.removeEventListener('message', messageListener)
+            if (popup) popup.close()
+          }
+        } else if (event.data.type === 'LINKEDIN_AUTH_ERROR') {
+          toast.error('Erreur lors de la connexion LinkedIn')
+          window.removeEventListener('message', messageListener)
+          if (popup) popup.close()
+        }
+      }
+
+      window.addEventListener('message', messageListener)
+
+      const checkClosed = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkClosed)
+          window.removeEventListener('message', messageListener)
+        }
+      }, 1000)
+    } catch (error: any) {
+      toast.error('Erreur lors de la connexion LinkedIn')
+    }
+  }
+
   const stats = {
     totalApplications: applications?.length || 0,
     pendingApplications: applications?.filter((a: any) => a.status === 'pending').length || 0,
@@ -24,6 +97,54 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* LinkedIn Connection Required Banner */}
+      {!checkingLinkedIn && !linkedInConnected && (
+        <div style={{
+          backgroundColor: '#fff3cd',
+          border: '2px solid #ffc107',
+          borderRadius: '12px',
+          padding: '24px',
+          marginBottom: '32px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+        }}>
+          <FaExclamationTriangle size={32} color="#856404" />
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: '1.125rem', fontWeight: '700', color: '#856404', marginBottom: '8px' }}>
+              Connexion LinkedIn requise
+            </h3>
+            <p style={{ color: '#856404', margin: 0, fontSize: '0.875rem' }}>
+              Pour utiliser toutes les fonctionnalités de JobFlow, notamment la candidature automatique aux offres d'emploi, 
+              vous devez connecter votre compte LinkedIn. C'est rapide et sécurisé !
+            </p>
+          </div>
+          <button
+            onClick={handleConnectLinkedIn}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#0077b5',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '0.875rem',
+              whiteSpace: 'nowrap',
+              transition: 'background-color 0.2s',
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#005885'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0077b5'}
+          >
+            <FaLinkedin size={18} />
+            Connecter LinkedIn
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
         <div>

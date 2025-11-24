@@ -13,6 +13,8 @@ router.delete('/account', UserController.deleteAccount);
 router.get('/preferences', UserController.getPreferences);
 router.put('/preferences', UserController.updatePreferences);
 router.get('/export', UserController.exportData);
+router.get('/credentials', UserController.getCredentials);
+router.put('/credentials', UserController.updateCredentials);
 
 export default router;
 

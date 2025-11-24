@@ -22,8 +22,8 @@ export interface Application {
 export class ApplicationModel {
   static async create(applicationData: Omit<Application, 'id' | 'created_at' | 'updated_at'>): Promise<Application> {
     const result = await config.query(
-      `INSERT INTO applications (user_id, job_offer_id, cv_id, status, match_score, customized_cv_path, application_date, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO applications (user_id, job_offer_id, cv_id, status, match_score, customized_cv_path, application_date, notes, submission_status, submission_message, submission_date, submission_method)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         applicationData.user_id,
@@ -34,6 +34,10 @@ export class ApplicationModel {
         applicationData.customized_cv_path || null,
         applicationData.application_date || new Date(),
         applicationData.notes || null,
+        applicationData.submission_status || null,
+        applicationData.submission_message || null,
+        applicationData.submission_date || null,
+        applicationData.submission_method || null,
       ]
     );
 

@@ -18,12 +18,45 @@ export class JobController {
         offset = 0,
       } = req.query;
 
+      // Parser les paramètres pour gérer les chaînes séparées par des virgules et les arrays
+      let parsedKeywords: string | string[] | undefined;
+      if (keywords) {
+        if (typeof keywords === 'string') {
+          // Si c'est une chaîne, vérifier si elle contient des virgules
+          parsedKeywords = keywords.includes(',') ? keywords.split(',').map(k => k.trim()) : keywords;
+        } else if (Array.isArray(keywords)) {
+          parsedKeywords = keywords;
+        }
+      }
+      // Gérer le cas où axios envoie keywords[] au lieu de keywords
+      if (!parsedKeywords && (req.query as any)['keywords[]']) {
+        parsedKeywords = Array.isArray((req.query as any)['keywords[]']) 
+          ? (req.query as any)['keywords[]'] 
+          : [(req.query as any)['keywords[]']];
+      }
+
+      let parsedLocation: string | string[] | undefined;
+      if (location) {
+        if (typeof location === 'string') {
+          // Si c'est une chaîne, vérifier si elle contient des virgules
+          parsedLocation = location.includes(',') ? location.split(',').map(l => l.trim()) : location;
+        } else if (Array.isArray(location)) {
+          parsedLocation = location;
+        }
+      }
+      // Gérer le cas où axios envoie location[] au lieu de location
+      if (!parsedLocation && (req.query as any)['location[]']) {
+        parsedLocation = Array.isArray((req.query as any)['location[]']) 
+          ? (req.query as any)['location[]'] 
+          : [(req.query as any)['location[]']];
+      }
+
       const jobs = await JobOfferModel.search({
         platform: platform as string,
-        location: location as string | string[],
+        location: parsedLocation,
         job_type: job_type as string,
         remote: remote === 'true',
-        keywords: keywords as string | string[],
+        keywords: parsedKeywords,
         limit: parseInt(limit as string),
         offset: parseInt(offset as string),
         user_id: req.userId!, // Filter by current user
@@ -59,53 +92,90 @@ export class JobController {
       const { platform, keywords, location, limit, period } = req.body;
 
       let jobs: any[] = [];
-      const searchKeywords = keywords || 'developer';
-      const searchLocation = location || 'Paris, France';
-      const searchLimit = limit || 25;
-      const searchPeriod = period || 'month'; // Default to month as requested
 
-      if (!platform || platform === 'linkedin') {
-        try {
-          const linkedInJobs = await LinkedInService.fetchJobs(req.userId!, {
-            keywords: searchKeywords,
-            location: searchLocation,
-            limit: searchLimit,
-            period: searchPeriod,
-          });
-          jobs = [...jobs, ...linkedInJobs];
-          logger.info(`Fetched ${linkedInJobs.length} jobs from LinkedIn`);
-        } catch (error: any) {
-          logger.warn('LinkedIn fetch jobs failed', { error: error.message });
-          // Continuer avec les autres plateformes même si LinkedIn échoue
-        }
+      // Handle keywords: if array, join with OR, else use as is or default
+      let searchKeywords = 'developer';
+      if (Array.isArray(keywords) && keywords.length > 0) {
+        searchKeywords = keywords.join(' OR ');
+      } else if (typeof keywords === 'string' && keywords.length > 0) {
+        searchKeywords = keywords;
       }
 
-      if (!platform || platform === 'indeed') {
-        try {
-          const indeedJobs = await IndeedService.fetchJobs({
-            keywords: searchKeywords,
-            location: searchLocation,
-            limit: searchLimit,
-            period: searchPeriod,
-          });
-          jobs = [...jobs, ...indeedJobs];
-          logger.info(`Fetched ${indeedJobs.length} jobs from Indeed`);
-        } catch (error: any) {
-          logger.warn('Indeed fetch jobs failed', { error: error.message });
-          // Continuer même si Indeed échoue
+      // Handle locations: ensure it's an array to loop through
+      let searchLocations: string[] = ['Paris, France'];
+      if (Array.isArray(location) && location.length > 0) {
+        searchLocations = location;
+      } else if (typeof location === 'string' && location.length > 0) {
+        searchLocations = [location];
+      }
+
+      const searchLimit = limit || 50; // Increased default limit
+      const searchPeriod = period || 'month';
+
+      // Loop through each location to maximize results
+      for (const loc of searchLocations) {
+        if (!platform || platform === 'linkedin') {
+          try {
+            const linkedInJobs = await LinkedInService.fetchJobs(req.userId!, {
+              keywords: searchKeywords,
+              location: loc,
+              limit: searchLimit,
+              period: searchPeriod,
+            });
+            jobs = [...jobs, ...linkedInJobs];
+            logger.info(`Fetched ${linkedInJobs.length} jobs from LinkedIn for location: ${loc}`);
+          } catch (error: any) {
+            logger.warn(`LinkedIn fetch jobs failed for ${loc}`, { error: error.message });
+          }
+        }
+
+        if (!platform || platform === 'indeed') {
+          try {
+            const indeedJobs = await IndeedService.fetchJobs({
+              keywords: searchKeywords,
+              location: loc,
+              limit: searchLimit,
+              period: searchPeriod,
+            });
+            jobs = [...jobs, ...indeedJobs];
+            logger.info(`Fetched ${indeedJobs.length} jobs from Indeed for location: ${loc}`);
+          } catch (error: any) {
+            logger.warn(`Indeed fetch jobs failed for ${loc}`, { error: error.message });
+          }
         }
       }
 
       // Save jobs to database with user_id
       if (jobs.length > 0) {
-        // Add user_id to each job
-        const userJobs = jobs.map(job => ({
-          ...job,
-          user_id: req.userId!
-        }));
+        // Add user_id to each job and remove duplicates based on external_id
+        const uniqueJobsMap = new Map();
+        jobs.forEach(job => {
+          if (!uniqueJobsMap.has(job.external_id)) {
+            uniqueJobsMap.set(job.external_id, {
+              ...job,
+              user_id: req.userId!
+            });
+          }
+        });
 
-        await JobOfferModel.bulkCreate(userJobs);
-        logger.info(`Saved ${jobs.length} jobs to database for user ${req.userId}`);
+        const uniqueJobs = Array.from(uniqueJobsMap.values());
+
+        await JobOfferModel.bulkCreate(uniqueJobs);
+        logger.info(`Saved ${uniqueJobs.length} unique jobs to database for user ${req.userId}`);
+      }
+
+      // Si aucune offre n'a été trouvée, donner un message plus clair
+      if (jobs.length === 0) {
+        logger.warn(`No jobs found for keywords: ${searchKeywords}, locations: ${searchLocations.join(', ')}`);
+        return res.json({
+          message: 'Aucune offre trouvée pour ces critères. Essayez avec d\'autres mots-clés ou localisations.',
+          count: 0,
+          platforms: {
+            linkedin: 0,
+            indeed: 0,
+          },
+          suggestion: 'Essayez des mots-clés plus généraux ou vérifiez votre connexion internet.',
+        });
       }
 
       res.json({
@@ -118,6 +188,16 @@ export class JobController {
       });
     } catch (error) {
       logger.error('Sync jobs error', error);
+      next(error);
+    }
+  }
+
+  static async deleteAll(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      await JobOfferModel.deleteAllForUser(req.userId!);
+      res.json({ message: 'All jobs deleted successfully' });
+    } catch (error) {
+      logger.error('Delete all jobs error', error);
       next(error);
     }
   }

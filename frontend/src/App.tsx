@@ -10,7 +10,6 @@ import CVUpload from './pages/CVUpload'
 import JobSearch from './pages/JobSearch'
 import Applications from './pages/Applications'
 import Matching from './pages/Matching'
-import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 import LinkedInCallback from './pages/LinkedInCallback'
 import LandingPage from './pages/LandingPage'
@@ -41,7 +40,6 @@ function App() {
                     <Route path="/jobs" element={<JobSearch />} />
                     <Route path="/applications" element={<Applications />} />
                     <Route path="/matching" element={<Matching />} />
-                    <Route path="/profile" element={<Profile />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </Layout>

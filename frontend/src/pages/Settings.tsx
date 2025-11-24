@@ -159,10 +159,24 @@ export default function Settings() {
                                         <FaLinkedin size={20} />
                                     </div>
                                     <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#334155', margin: 0 }}>
-                                        Compte LinkedIn
+                                        Connexion LinkedIn (Obligatoire)
                                     </h3>
                                 </div>
-                                <div style={{ border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden', transition: 'all 0.2s hover:shadow-md' }}>
+                                <div style={{ 
+                                    border: '2px solid #e2e8f0', 
+                                    borderRadius: '16px', 
+                                    overflow: 'hidden', 
+                                    padding: '24px',
+                                    backgroundColor: '#f8fafc'
+                                }}>
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '12px' }}>
+                                            Pour utiliser JobFlow et postuler automatiquement aux offres d'emploi, vous devez connecter votre compte LinkedIn via OAuth.
+                                        </p>
+                                        <p style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                                            <strong>URL de redirection configurée :</strong> <code style={{ backgroundColor: '#e2e8f0', padding: '4px 8px', borderRadius: '4px', fontSize: '0.875rem' }}>http://localhost:3001/auth/linkedin/callback</code>
+                                        </p>
+                                    </div>
                                     <LinkedInConnect />
                                 </div>
                             </div>

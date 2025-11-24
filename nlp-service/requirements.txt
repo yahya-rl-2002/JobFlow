@@ -14,7 +14,8 @@ nltk==3.8.1
 requests>=2.31.0
 gunicorn==21.2.0
 openai>=1.12.0
-jobspy>=0.4.0
+python-jobspy>=1.1.82
 beautifulsoup4>=4.12.0
 selenium>=4.15.0
+webdriver-manager>=4.0.0
 pdfplumber>=0.10.3

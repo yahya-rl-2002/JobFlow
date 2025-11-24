@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import { config } from '../config/config';
 import { JobOffer } from '../models/JobOffer';
 import { LinkedInTokenModel, LinkedInToken } from '../models/LinkedInToken';
 import { logger } from '../utils/logger';
@@ -31,9 +32,9 @@ interface LinkedInOAuthResponse {
 export class LinkedInService {
   private static readonly API_BASE_URL = 'https://api.linkedin.com/v2';
   private static readonly AUTH_BASE_URL = 'https://www.linkedin.com/oauth/v2';
-  private static readonly CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || '78g3tk7nu8h5g8';
-  private static readonly CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET || 'votre_client_secret';
-  private static readonly REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:5173/auth/linkedin/callback';
+  private static readonly CLIENT_ID = config.linkedin.clientId;
+  private static readonly CLIENT_SECRET = config.linkedin.clientSecret;
+  private static readonly REDIRECT_URI = config.linkedin.redirectUri;
 
   // LinkedIn utilise maintenant OpenID Connect
   // Scopes valides: openid (requis), profile, email
@@ -263,7 +264,7 @@ export class LinkedInService {
    */
   static async fetchJobs(userId: number, params: LinkedInJobSearchParams): Promise<JobOffer[]> {
     try {
-      const nlpServiceUrl = process.env.NLP_SERVICE_URL || 'http://127.0.0.1:5001';
+      const nlpServiceUrl = config.nlpService.url;
 
       logger.info(`Fetching real LinkedIn jobs for user ${userId} with keywords: ${params.keywords}, location: ${params.location}, period: ${params.period}`);
 
@@ -304,20 +305,20 @@ export class LinkedInService {
           throw new Error('No jobs returned from scraper');
         }
       } catch (scrapeError: any) {
-        logger.warn('LinkedIn scraping failed, falling back to demo jobs', {
-          error: scrapeError.message,
+        logger.warn('LinkedIn scraping failed', {
+          error: scrapeError?.message || String(scrapeError),
           response: scrapeError.response?.data,
         });
 
-        // Fallback vers des offres de démonstration si le scraping échoue
-        const demoJobs = this.generateDemoJobs(params);
-        logger.info(`Using ${demoJobs.length} demo jobs as fallback`);
-        return demoJobs;
+        // Ne pas retourner de démos automatiquement - laisser l'utilisateur savoir qu'il n'y a pas de résultats
+        logger.info('No jobs found from LinkedIn scraper. User should try different keywords or location.');
+        return []; // Retourner un tableau vide plutôt que des démos
       }
     } catch (error: any) {
       logger.error('LinkedIn fetch jobs error', error);
-      // En cas d'erreur, retourner des offres de démonstration
-      return this.generateDemoJobs(params);
+      // En cas d'erreur, retourner un tableau vide plutôt que des démos
+      // L'utilisateur saura qu'il n'y a pas de vraies offres disponibles
+      return [];
     }
   }
 

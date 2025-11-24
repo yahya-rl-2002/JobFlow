@@ -1,20 +1,17 @@
 import { Pool, PoolClient } from 'pg';
-import dotenv from 'dotenv';
+import { config as appConfig } from '../config/config';
 import { logger } from '../utils/logger';
-
-// Charger les variables d'environnement avant de créer le pool
-dotenv.config();
 
 class Database {
   private pool: Pool;
 
   constructor() {
     this.pool = new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      database: process.env.DB_NAME || 'job_application_db',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
+      host: appConfig.db.host,
+      port: appConfig.db.port,
+      database: appConfig.db.name,
+      user: appConfig.db.user,
+      password: appConfig.db.password,
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
@@ -46,10 +43,10 @@ class Database {
     try {
       // Test connection
       await this.pool.query('SELECT NOW()');
-      
+
       // Create tables if they don't exist
       await this.createTables();
-      
+
       logger.info('Database initialized successfully');
     } catch (error) {
       logger.error('Database initialization failed', error);
@@ -71,8 +68,20 @@ class Database {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         gdpr_consent BOOLEAN DEFAULT false,
         gdpr_consent_date TIMESTAMP,
-        is_active BOOLEAN DEFAULT true
+        is_active BOOLEAN DEFAULT true,
+        linkedin_email VARCHAR(255),
+        linkedin_password_encrypted TEXT,
+        indeed_email VARCHAR(255),
+        indeed_password_encrypted TEXT
       )
+    `);
+    
+    // Créer les index pour les credentials
+    await this.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_linkedin_email ON users(linkedin_email) WHERE linkedin_email IS NOT NULL
+    `);
+    await this.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_indeed_email ON users(indeed_email) WHERE indeed_email IS NOT NULL
     `);
 
     // CVs table
@@ -117,7 +126,7 @@ class Database {
         is_active BOOLEAN DEFAULT true
       )
     `);
-    
+
     // Ajouter la colonne skills_required si elle n'existe pas (migration)
     await this.query(`
       DO $$ 

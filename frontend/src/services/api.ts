@@ -7,6 +7,9 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  paramsSerializer: {
+    indexes: null, // Les arrays seront sérialisés comme keywords=value1&keywords=value2
+  },
 })
 
 // Intercepteur pour ajouter le token
@@ -63,6 +66,8 @@ export const jobService = {
   getById: (id: number) => api.get(`/jobs/${id}`).then((res) => res.data),
 
   sync: (data: any) => api.post('/jobs/sync', data).then((res) => res.data),
+
+  deleteAll: () => api.delete('/jobs').then((res) => res.data),
 }
 
 export const applicationService = {
@@ -76,7 +81,7 @@ export const applicationService = {
 
   submit: (id: number) => api.post(`/applications/${id}/submit`).then((res) => res.data),
 
-  bulkApply: (jobIds: number[]) => api.post('/applications/bulk', { job_ids: jobIds }).then((res) => res.data),
+  bulkApply: (jobIds: number[], cvId?: number | null) => api.post('/applications/bulk', { job_ids: jobIds, cv_id: cvId || null }).then((res) => res.data),
 }
 
 export const matchingService = {
@@ -100,6 +105,10 @@ export const userService = {
   changePassword: (data: any) => api.put('/users/password', data).then((res) => res.data),
 
   deleteAccount: () => api.delete('/users/account').then((res) => res.data),
+
+  getCredentials: () => api.get('/users/credentials').then((res) => res.data),
+
+  updateCredentials: (data: any) => api.put('/users/credentials', data).then((res) => res.data),
 }
 
 export default api

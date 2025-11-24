@@ -275,7 +275,7 @@ def scrape_jobs():
     try:
         if not linkedin_scraper:
             return jsonify({
-                'error': 'LinkedIn scraper not available. Install jobspy: pip install jobspy'
+                'error': 'LinkedIn scraper not available. Please check the service logs.'
             }), 503
         
         data = request.json
@@ -296,15 +296,94 @@ def scrape_jobs():
             site_name=platform
         )
         
+        # S'assurer que toutes les offres ont des URLs valides pour la candidature
+        valid_jobs = []
+        for job in jobs:
+            if job.get('url') and ('linkedin.com' in job['url'] or 'indeed.com' in job['url']):
+                valid_jobs.append(job)
+            elif job.get('url'):
+                # URL valide mais pas LinkedIn/Indeed, on l'accepte quand même
+                valid_jobs.append(job)
+            else:
+                logger.warning(f"Job sans URL valide ignoré: {job.get('title', 'Unknown')}")
+        
+        if len(valid_jobs) == 0 and len(jobs) > 0:
+            logger.warning("Aucune offre avec URL valide. Vérifiez le scraper.")
+        
         return jsonify({
             'success': True,
-            'jobs': jobs,
-            'count': len(jobs),
-            'platform': platform
+            'jobs': valid_jobs,
+            'count': len(valid_jobs),
+            'platform': platform,
+            'message': f'Récupéré {len(valid_jobs)} offres réelles depuis {platform}' if valid_jobs else 'Aucune offre trouvée'
         })
     except Exception as e:
         logger.error(f'Error scraping jobs: {str(e)}', exc_info=True)
         return jsonify({'error': f'Failed to scrape jobs: {str(e)}'}), 500
+
+
+@app.route('/apply-jobs', methods=['POST'])
+def apply_jobs():
+    """
+    Postule automatiquement à plusieurs offres d'emploi en utilisant Selenium
+    Supporte OAuth LinkedIn et credentials Indeed
+    """
+    try:
+        data = request.json
+        jobs = data.get('jobs', [])  # Liste des offres avec id, url, platform, title
+        cv_path = data.get('cv_path')
+        linkedin_oauth_token = data.get('linkedin_oauth_token')  # Token OAuth LinkedIn
+        credentials = data.get('credentials', {})  # indeed_email, indeed_password
+        cover_letter = data.get('cover_letter')
+        
+        if not jobs or not cv_path:
+            return jsonify({'error': 'jobs and cv_path are required'}), 400
+        
+        # Vérifier qu'on a soit un token LinkedIn OAuth, soit des credentials Indeed
+        platforms = [job.get('platform') for job in jobs]
+        needs_linkedin = 'linkedin' in platforms
+        needs_indeed = 'indeed' in platforms
+        
+        if needs_linkedin and not linkedin_oauth_token:
+            return jsonify({'error': 'LinkedIn OAuth token is required for LinkedIn jobs'}), 400
+        
+        if needs_indeed and not credentials.get('indeed_email'):
+            return jsonify({'error': 'Indeed credentials are required for Indeed jobs'}), 400
+        
+        from services.job_application_automator import JobApplicationAutomator
+        
+        logger.info(f'Starting automated application process for {len(jobs)} jobs')
+        logger.info(f'LinkedIn OAuth token: {"provided" if linkedin_oauth_token else "not provided"}')
+        logger.info(f'Indeed credentials: {"provided" if credentials.get("indeed_email") else "not provided"}')
+        
+        automator = JobApplicationAutomator(headless=True)
+        
+        try:
+            results = automator.apply_to_multiple_jobs(
+                jobs=jobs,
+                cv_path=cv_path,
+                linkedin_oauth_token=linkedin_oauth_token,
+                credentials=credentials,
+                cover_letter=cover_letter
+            )
+            
+            success_count = sum(1 for r in results if r.get('success'))
+            
+            logger.info(f'Application process completed: {success_count}/{len(jobs)} successful')
+            
+            return jsonify({
+                'success': True,
+                'results': results,
+                'total': len(results),
+                'success_count': success_count,
+                'failed_count': len(results) - success_count
+            })
+        finally:
+            automator.close()
+            
+    except Exception as e:
+        logger.error(f'Error in apply_jobs: {str(e)}', exc_info=True)
+        return jsonify({'error': f'Failed to apply to jobs: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

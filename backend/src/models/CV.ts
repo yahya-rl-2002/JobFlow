@@ -92,5 +92,16 @@ export class CVModel {
       [new Date(), id]
     );
   }
+
+  /**
+   * Récupère le CV le plus récent d'un utilisateur
+   */
+  static async findLatestByUserId(userId: number): Promise<CV | null> {
+    const result = await config.query(
+      'SELECT * FROM cvs WHERE user_id = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+    return result.rows[0] || null;
+  }
 }
 

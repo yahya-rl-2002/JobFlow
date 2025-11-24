@@ -37,6 +37,10 @@ build/
 *.db
 *.sqlite
 
+# Redis
+*.rdb
+dump.rdb
+
 # Uploads
 uploads/
 temp/

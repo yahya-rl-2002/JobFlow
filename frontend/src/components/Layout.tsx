@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import Sidebar from './Sidebar'
+import LinkedInRequiredBanner from './LinkedInRequiredBanner'
 
 interface LayoutProps {
   children: ReactNode
@@ -17,6 +18,7 @@ export default function Layout({ children }: LayoutProps) {
         display: 'flex',
         flexDirection: 'column'
       }}>
+        <LinkedInRequiredBanner />
         <main style={{ flex: 1, padding: '40px' }}>
           {children}
         </main>

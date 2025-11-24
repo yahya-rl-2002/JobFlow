@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { logger } from './logger';
+import { config } from '../config/config';
 
 /**
  * Service de chiffrement pour les tokens sensibles
@@ -14,22 +15,29 @@ export class TokenEncryption {
   /**
    * Génère une clé de chiffrement depuis une clé maître
    */
+  /**
+   * Génère une clé de chiffrement depuis une clé maître
+   */
   private static getEncryptionKey(): Buffer {
-    const masterKey = process.env.ENCRYPTION_KEY;
-    
+    const masterKey = config.security.encryptionKey;
+
     if (!masterKey) {
-      logger.warn('ENCRYPTION_KEY not set, using default (NOT SECURE FOR PRODUCTION)');
-      // En production, cela devrait être une erreur fatale
-      if (process.env.NODE_ENV === 'production') {
+      if (config.env === 'production') {
         throw new Error('ENCRYPTION_KEY must be set in production');
       }
+      logger.warn('ENCRYPTION_KEY not set, using default (NOT SECURE FOR PRODUCTION)');
+      return crypto.pbkdf2Sync(
+        'default-dev-key-do-not-use',
+        'linkedin-token-salt',
+        100000,
+        this.KEY_LENGTH,
+        'sha256'
+      );
     }
 
-    const keyToUse = masterKey || 'default-key-change-in-production';
-    
     // Utiliser PBKDF2 pour dériver une clé sécurisée
     return crypto.pbkdf2Sync(
-      keyToUse,
+      masterKey,
       'linkedin-token-salt', // Salt fixe (en production, considérer un salt unique par token)
       100000, // 100k itérations
       this.KEY_LENGTH,

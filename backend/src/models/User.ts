@@ -1,5 +1,6 @@
 import { config } from '../config/database';
 import bcrypt from 'bcryptjs';
+import { TokenEncryption } from '../utils/tokenEncryption';
 
 export interface User {
   id?: number;
@@ -13,6 +14,17 @@ export interface User {
   gdpr_consent?: boolean;
   gdpr_consent_date?: Date;
   is_active?: boolean;
+  linkedin_email?: string;
+  linkedin_password_encrypted?: string;
+  indeed_email?: string;
+  indeed_password_encrypted?: string;
+}
+
+export interface UserCredentials {
+  linkedin_email?: string;
+  linkedin_password?: string;
+  indeed_email?: string;
+  indeed_password?: string;
 }
 
 export class UserModel {
@@ -100,6 +112,99 @@ export class UserModel {
       'UPDATE users SET is_active = false, updated_at = $1 WHERE id = $2',
       [new Date(), id]
     );
+  }
+
+  /**
+   * Met à jour les credentials LinkedIn/Indeed de l'utilisateur
+   */
+  static async updateCredentials(userId: number, credentials: UserCredentials): Promise<void> {
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (credentials.linkedin_email !== undefined) {
+      updates.push(`linkedin_email = $${paramCount}`);
+      values.push(credentials.linkedin_email);
+      paramCount++;
+    }
+
+    if (credentials.linkedin_password !== undefined) {
+      const encrypted = TokenEncryption.encrypt(credentials.linkedin_password);
+      updates.push(`linkedin_password_encrypted = $${paramCount}`);
+      values.push(encrypted);
+      paramCount++;
+    }
+
+    if (credentials.indeed_email !== undefined) {
+      updates.push(`indeed_email = $${paramCount}`);
+      values.push(credentials.indeed_email);
+      paramCount++;
+    }
+
+    if (credentials.indeed_password !== undefined) {
+      const encrypted = TokenEncryption.encrypt(credentials.indeed_password);
+      updates.push(`indeed_password_encrypted = $${paramCount}`);
+      values.push(encrypted);
+      paramCount++;
+    }
+
+    if (updates.length === 0) {
+      return; // Rien à mettre à jour
+    }
+
+    updates.push(`updated_at = $${paramCount}`);
+    values.push(new Date());
+    paramCount++;
+    values.push(userId);
+
+    await config.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount}`,
+      values
+    );
+  }
+
+  /**
+   * Récupère les credentials décryptés de l'utilisateur
+   */
+  static async getCredentials(userId: number): Promise<UserCredentials | null> {
+    const result = await config.query(
+      `SELECT linkedin_email, linkedin_password_encrypted, indeed_email, indeed_password_encrypted
+       FROM users WHERE id = $1 AND is_active = true`,
+      [userId]
+    );
+
+    if (!result.rows[0]) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    const credentials: UserCredentials = {};
+
+    if (row.linkedin_email) {
+      credentials.linkedin_email = row.linkedin_email;
+    }
+
+    if (row.linkedin_password_encrypted) {
+      try {
+        credentials.linkedin_password = TokenEncryption.decrypt(row.linkedin_password_encrypted);
+      } catch (error) {
+        // Si le déchiffrement échoue, ne pas inclure le mot de passe
+      }
+    }
+
+    if (row.indeed_email) {
+      credentials.indeed_email = row.indeed_email;
+    }
+
+    if (row.indeed_password_encrypted) {
+      try {
+        credentials.indeed_password = TokenEncryption.decrypt(row.indeed_password_encrypted);
+      } catch (error) {
+        // Si le déchiffrement échoue, ne pas inclure le mot de passe
+      }
+    }
+
+    return credentials;
   }
 }
 
